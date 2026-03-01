@@ -3,38 +3,45 @@
  * 
  * LOGIC FILTER (AND):
  * - Tất cả các filter được combine bằng logic AND để thu hẹp data
- * - Ví dụ: { team: "Team A", san_pham: "SP1", thi_truong: "VN" }
- *   → Chỉ lấy records thỏa mãn CẢ 3 điều kiện (Team A AND SP1 AND VN)
+ * - Có thể truyền multiple values cho cùng 1 biến (sẽ thành OR trong biến đó)
+ * - Ví dụ: { team: ["Team A", "Team B"], san_pham: "SP1", thi_truong: "VN" }
+ *   → Chỉ lấy: (Team A OR Team B) AND SP1 AND VN
+ * - Nếu filter team thì chỉ hiển thị nhân sự của các team đó
+ * - Nếu filter thi_truong thì chỉ hiển thị nhân sự của các thị trường đó
+ * - Nếu filter san_pham thì chỉ hiển thị data của sản phẩm đó
  * 
  * STATISTICS RESPONSE:
  * - Các filter chỉ để THU HẸP PHẠM VI tính toán
  * - Response vẫn trả về ĐẦY ĐỦ các breakdown: by_ten, by_ca, by_team, by_san_pham, by_thi_truong
  * 
  * Ví dụ:
- * Filter: { team: "Team A", san_pham: "SP1", from_date: "01/02", to_date: "10/02" }
- * → API lọc: Chỉ lấy records của Team A AND SP1 AND trong khoảng 01/02-10/02
- * → Response statistics:
- *   - by_ten: Các nhân sự (của Team A đã lọc)
- *   - by_ca: Các ca làm việc
- *   - by_team: Sẽ chủ yếu là Team A (vì đã filter team)
- *   - by_san_pham: Sẽ chủ yếu là SP1 (vì đã filter)
- *   - by_thi_truong: Breakdown theo thị trường (trong phạm vi đã lọc)
+ * Filter: { team: ["Team A"], san_pham: "SP1", from_date: "01/02", to_date: "10/02" }
+ * → API lọc: Chỉ Team A AND SP1 AND trong khoảng 01/02-10/02
+ * → Response: by_ten chỉ hiển thị nhân sự Team A, cùng đầy đủ breakdowns
+ * 
+ * Filter: { team: ["Team A", "Team B"], thi_truong: ["VN", "TQ"], from_date: "01/02", to_date: "10/02" }
+ * → API lọc: (Team A OR Team B) AND (VN OR TQ) AND trong khoảng 01/02-10/02
+ * → Response: by_ten chỉ hiển thị nhân sự của Team A + B tại thị trường VN + TQ
  * 
  * Lọc theo ngày:
  * - Lọc 1 ngày: `ngay` (ví dụ: ngay: "01/02/2026")
  * - Lọc từ ngày đến ngày: `from_date` và `to_date`
  * 
  * Ví dụ GET:
- * getDetailReports({ team: "Team A", from_date: "01/02/2026", to_date: "10/02/2026" })
- * → Chỉ lấy data Team A từ 01/02 đến 10/02
+ * getDetailReports({ team: ["Team A"], from_date: "01/02/2026", to_date: "10/02/2026" })
+ * → URL: /detail_reports?team=Team%20A&from_date=01/02/2026&to_date=10/02/2026
+ * 
+ * Ví dụ GET - Multiple values:
+ * getDetailReports({ team: ["Team A", "Team B"], thi_truong: ["VN", "TQ"], san_pham: "SP1" })
+ * → URL: /detail_reports?team=Team%20A&team=Team%20B&thi_truong=VN&thi_truong=TQ&san_pham=SP1
  * 
  * Ví dụ POST Statistics:
  * getDetailReportsStatisticsByBody({ 
- *   filters: { team: ["Team A"], san_pham: "SP1" },
+ *   filters: { team: ["Team A"], san_pham: "SP1", thi_truong: "VN" },
  *   date_range: { from: "01/02/2026", to: "10/02/2026" } 
  * })
- * → Tính stats cho Team A + SP1 + khoảng ngày
- * → Vẫn trả về by_ten, by_ca, by_team, by_san_pham, by_thi_truong
+ * → Tính stats cho Team A AND SP1 AND VN
+ * → Vẫn trả về by_ten (nhân sự Team A tại VN), by_ca, by_team, by_san_pham, by_thi_truong
  */
 
 const API_BASE_URL = "https://lumidataapi.vercel.app";
@@ -145,49 +152,54 @@ const API_BASE_URL = "https://lumidataapi.vercel.app";
         });
         console.log("Chỉ Team A:", teamAData.data);
 
-        // 2) Lọc kết hợp: Team A AND Sản phẩm SP1 AND Thị trường VN (logic AND)
-        const multiFilter = await getDetailReports({
-        team: "Team A",
-        san_pham: "SP1",
+        // 2) Lọc theo Thị trường (chỉ hiển thị nhân sự tại thị trường VN)
+        const marketVNData = await getDetailReports({
         thi_truong: "VN",
         limit: 20,
         });
-        console.log("Team A AND SP1 AND VN:", multiFilter.data);
+        console.log("Chỉ thị trường VN:", marketVNData.data);
 
-        // 3) Lọc theo Team + Ca + Từ ngày đến ngày (logic AND)
-        const teamCaDateRange = await getDetailReports({
-        team: "Team A",
+        // 3) Lọc kết hợp: (Team A OR Team B) AND (VN OR TQ) AND SP1 (logic AND)
+        const multiFilter = await getDetailReports({
+        team: ["Team A", "Team B"],  // Multiple teams
+        thi_truong: ["VN", "TQ"],   // Multiple markets
+        san_pham: "SP1",
+        limit: 50,
+        });
+        console.log("(Team A OR Team B) AND (VN OR TQ) AND SP1:", multiFilter.data);
+
+        // 4) Lọc theo Team + Thi_truong + Ca + Từ ngày đến ngày
+        const complexFilter = await getDetailReports({
+        team: ["MKT-Độc Anh"],
+        thi_truong: "VN",
         ca: "Sáng",
         from_date: "01/02/2026",
         to_date: "10/02/2026",
         limit: 50,
         });
-        console.log("Team A AND Ca Sáng AND từ 01/02 đến 10/02:", teamCaDateRange.data);
+        console.log("Team MKT-Độc Anh AND VN AND Sáng AND từ 01/02-10/02:", complexFilter.data);
 
-        // 4) Thống kê theo Team + Sản phẩm (GET)
-        // Filter để thu hẹp data, nhưng vẫn nhận đầy đủ breakdown
-        const statsTeamProduct = await getDetailReportsStatisticsByQuery({
-        team: "Team A",
-        san_pham: "SP1",
+        // 5) Thống kê theo Team + Thi_truong (GET)
+        const statsTeamMarket = await getDetailReportsStatisticsByQuery({
+        team: "MKT-Độc Anh",
+        thi_truong: "VN",
         from_date: "01/02/2026",
         to_date: "10/02/2026",
         });
-        console.log("Stats cho Team A AND SP1 (từ 01/02-10/02):");
-        console.log("  - Tổng records:", statsTeamProduct.statistics.total_records);
-        console.log("  - by_ten (các nhân sự của Team A):", statsTeamProduct.statistics.by_ten);
-        console.log("  - by_ca (ca làm việc):", statsTeamProduct.statistics.by_ca);
-        console.log("  - by_team (chủ yếu Team A):", statsTeamProduct.statistics.by_team);
-        console.log("  - by_san_pham (chủ yếu SP1):", statsTeamProduct.statistics.by_san_pham);
-        console.log("  - by_thi_truong (thị trường):", statsTeamProduct.statistics.by_thi_truong);
+        console.log("Stats cho MKT-Độc Anh tại VN (từ 01/02-10/02):");
+        console.log("  - Tổng records:", statsTeamMarket.statistics.total_records);
+        console.log("  - by_ten (nhân sự Team MKT-Độc Anh tại VN):", statsTeamMarket.statistics.by_ten);
+        console.log("  - by_ca (ca làm việc):", statsTeamMarket.statistics.by_ca);
+        console.log("  - by_thi_truong (chủ yếu VN):", statsTeamMarket.statistics.by_thi_truong);
+        console.log("  - by_san_pham (sản phẩm):", statsTeamMarket.statistics.by_san_pham);
 
-        // 5) Thống kê với multiple filters (POST)
-        // Filters chỉ để thu hẹp → vẫn nhận đầy đủ by_ten, by_ca, by_team, etc.
+        // 6) Thống kê với multiple teams, multiple markets (POST)
         const statsMultiFilter = await getDetailReportsStatisticsByBody({
         filters: {
-            team: ["Team A", "Team B"], // OR trong team
-            san_pham: "SP1",           // AND với sản phẩm
-            thi_truong: "VN",          // AND với thị trường
-            ca: "Sáng",                 // AND với ca
+            team: ["Team A", "Team B"],     // OR: Team A OR Team B
+            thi_truong: ["VN", "TQ"],      // OR: VN OR TQ
+            san_pham: "SP1",                // AND tất cả filter
+            ca: "Sáng",
         },
         date_range: {
             from: "01/02/2026",
@@ -195,47 +207,53 @@ const API_BASE_URL = "https://lumidataapi.vercel.app";
         },
         date_column: "ngay",
         });
-        console.log("Stats (Team A OR Team B) AND SP1 AND VN AND Ca Sáng:");
+        console.log("Stats (Team A OR Team B) AND (VN OR TQ) AND SP1 AND Sáng:");
         console.log("  - Total records:", statsMultiFilter.statistics.total_records);
-        console.log("  - Total mess/cmt:", statsMultiFilter.statistics.total_mess_cmt);
-        console.log("  - Total CPQC:", statsMultiFilter.statistics.total_cpqc);
-        console.log("  - by_ten (nhân sự trong phạm vi filter):", statsMultiFilter.statistics.by_ten);
-        console.log("  - by_ca (chủ yếu Ca Sáng):", statsMultiFilter.statistics.by_ca);
+        console.log("  - by_ten (nhân sự của các team tại các thị trường):", statsMultiFilter.statistics.by_ten);
         console.log("  - by_team (Team A + B):", statsMultiFilter.statistics.by_team);
+        console.log("  - by_thi_truong (VN + TQ):", statsMultiFilter.statistics.by_thi_truong);
         console.log("  - by_san_pham (chủ yếu SP1):", statsMultiFilter.statistics.by_san_pham);
-        console.log("  - by_thi_truong (chủ yếu VN):", statsMultiFilter.statistics.by_thi_truong);
+        console.log("  - by_ca (chủ yếu Sáng):", statsMultiFilter.statistics.by_ca);
 
-        // 6) Lọc chỉ theo Sản phẩm (tất cả team)
+        // 7) Lọc chỉ theo Sản phẩm (tất cả team)
         const productOnly = await getDetailReports({
         san_pham: "SP1",
         limit: 100,
         });
-        console.log("Chỉ sản phẩm SP1 (all teams):", productOnly.data);
+        console.log("Chỉ sản phẩm SP1 (all teams & markets):", productOnly.data);
 
-        // 7) Lấy tất cả dữ liệu (không filter)
+        // 8) Lấy tất cả dữ liệu (không filter)
         const allData = await getDetailReports({
         limit: 100,
         });
         console.log("Tất cả dữ liệu:", allData.data);
 
         // ===================================================
-        // LƯU Ý QUAN TRỌNG VỀ STATISTICS:
+        // LINK EXAMPLES (URL-encoded):
         // ===================================================
-        // - Filters (team, san_pham, thi_truong, ngày) → Thu hẹp phạm vi data
-        // - Response statistics → Vẫn trả về ĐẦY ĐỦ các breakdown:
-        //   + by_ten: Danh sách nhân sự (trong phạm vi đã filter)
-        //   + by_ca: Breakdown theo ca (Sáng/Chiều/Tối)
-        //   + by_team: Breakdown theo team
-        //   + by_san_pham: Breakdown theo sản phẩm
-        //   + by_thi_truong: Breakdown theo thị trường
-        // 
-        // Ví dụ:
-        // Filter: { team: "Team A", san_pham: "SP1" }
-        // → Lọc data: Chỉ Team A + SP1
-        // → Response: Vẫn có by_ten (nhân sự Team A), by_ca, by_team (chủ yếu A), etc.
+        // GET - Single team:
+        // https://lumidataapi.vercel.app/detail_reports?team=MKT-%C4%90%E1%BB%A9c%20Anh&from_date=01/02/2026&to_date=10/02/2026
         //
-        // Filter chỉ để "zoom in" vào 1 phần data
-        // Statistics vẫn cho breakdown đầy đủ của phần data đó
+        // GET - Multiple teams (mỗi team là 1 param):
+        // https://lumidataapi.vercel.app/detail_reports?team=Team%20A&team=Team%20B&from_date=01/02/2026&to_date=10/02/2026
+        //
+        // GET - Multiple teams + multiple markets:
+        // https://lumidataapi.vercel.app/detail_reports?team=Team%20A&team=Team%20B&thi_truong=VN&thi_truong=TQ&from_date=01/02/2026&to_date=10/02/2026
+        //
+        // GET - Team + Market + Product:
+        // https://lumidataapi.vercel.app/detail_reports?team=MKT-%C4%90%E1%BB%A9c%20Anh&thi_truong=VN&san_pham=SP1&from_date=01/02/2026&to_date=10/02/2026
+        //
+        // Statistics GET:
+        // https://lumidataapi.vercel.app/detail_reports/statistics?team=MKT-%C4%90%E1%BB%A9c%20Anh&thi_truong=VN&from_date=01/02/2026&to_date=10/02/2026
+        //
+        // Statistics GET - Multiple teams:
+        // https://lumidataapi.vercel.app/detail_reports/statistics?team=Team%20A&team=Team%20B&thi_truong=VN&thi_truong=TQ&from_date=01/02/2026&to_date=10/02/2026
+        //
+        // LƯU Ý: 
+        // - Khi truyền multiple values cho cùng biến → repeat param name (team=A&team=B)
+        // - Nếu filter team → by_ten chỉ hiển thị nhân sự của các team đó
+        // - Nếu filter thi_truong → by_ten chỉ hiển thị nhân sự tại các thị trường đó
+        // - Filters combine bằng AND (các biến khác nhau) hoặc OR (cùng biến)
     } catch (error) {
         console.error("API error:", error.message);
     }
