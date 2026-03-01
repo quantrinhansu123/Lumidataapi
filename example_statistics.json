@@ -1,0 +1,113 @@
+{
+  "examples": {
+    "example_1_post_statistics": {
+      "method": "POST",
+      "url": "http://127.0.0.1:8000/orders/statistics",
+      "body": {
+        "filters": {
+          "team": ["Team A", "Team B"],
+          "delivery_status": "Delivered",
+          "country": "US"
+        },
+        "date_range": {
+          "from": "01/03/2026",
+          "to": "31/03/2026"
+        },
+        "date_column": "created_at"
+      },
+      "description": "Tính toán thống kê với nhiều filter và date range"
+    },
+    "example_2_post_simple": {
+      "method": "POST",
+      "url": "http://127.0.0.1:8000/orders/statistics",
+      "body": {
+        "filters": {
+          "delivery_status": "Delivered",
+          "payment_status": "Paid"
+        }
+      },
+      "description": "Tính toán thống kê với filter đơn giản"
+    },
+    "example_3_get_statistics": {
+      "method": "GET",
+      "url": "http://127.0.0.1:8000/orders/statistics?created_at=01/03/2026&team=Team%20A",
+      "description": "Tính toán thống kê qua query params"
+    },
+    "example_4_get_with_multiple_filters": {
+      "method": "GET",
+      "url": "http://127.0.0.1:8000/orders/statistics?created_at=01/03/2026&delivery_status=Delivered&payment_status=Paid&country=US",
+      "description": "Tính toán thống kê với nhiều filter qua query params"
+    }
+  },
+  "response_structure": {
+    "statistics": {
+      "total_orders": 100,
+      "total_revenue_vnd": 50000000.0,
+      "total_amount_vnd": 52000000.0,
+      "average_order_value": 500000.0,
+      "by_delivery_status": {
+        "count": {
+          "Delivered": 80,
+          "Pending": 20
+        },
+        "percentage": {
+          "Delivered": 80.0,
+          "Pending": 20.0
+        }
+      },
+      "by_payment_status": {
+        "count": {
+          "Paid": 70,
+          "Unpaid": 30
+        },
+        "percentage": {
+          "Paid": 70.0,
+          "Unpaid": 30.0
+        }
+      },
+      "by_team": {
+        "count": {
+          "Team A": 50,
+          "Team B": 50
+        },
+        "revenue": {
+          "Team A": 25000000.0,
+          "Team B": 25000000.0
+        }
+      },
+      "by_country": {
+        "count": {
+          "US": 60,
+          "VN": 40
+        },
+        "revenue": {
+          "US": 30000000.0,
+          "VN": 20000000.0
+        }
+      },
+      "by_marketing_staff": {
+        "count": {},
+        "revenue": {}
+      },
+      "by_sale_staff": {
+        "count": {},
+        "revenue": {}
+      },
+      "by_product": {
+        "count": {},
+        "revenue": {}
+      },
+      "by_shift": {
+        "count": {},
+        "revenue": {}
+      },
+      "by_check_result": {
+        "count": {},
+        "revenue": {}
+      }
+    },
+    "filters_applied": {},
+    "date_range": null,
+    "total_records_analyzed": 100
+  }
+}
