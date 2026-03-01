@@ -65,8 +65,25 @@ ALL_ORDER_COLUMNS = {
 }
 
 # Cột trả về từ API và label tương ứng
-SELECT_COLUMNS = "id, marketing_staff, sale_staff, created_at, total_vnd"
-RESPONSE_LABELS = {"id": "id", "marketing_staff": "nhanvien_maketing", "sale_staff": "nhanvien_sale", "created_at": "ngaytao", "total_vnd": "tongtien"}
+SELECT_COLUMNS = "id, marketing_staff, sale_staff, created_at, total_vnd, order_date, country, product, total_amount_vnd, tracking_code, team, delivery_status, payment_status, delivery_staff, check_result, shift"
+RESPONSE_LABELS = {
+    "id": "id",
+    "marketing_staff": "nhanvien_maketing",
+    "sale_staff": "nhanvien_sale",
+    "created_at": "ngaytao",
+    "total_vnd": "tongtien",
+    "order_date": "order_date",
+    "country": "country",
+    "product": "product",
+    "total_amount_vnd": "total_amount_vnd",
+    "tracking_code": "tracking_code",
+    "team": "team",
+    "delivery_status": "delivery_status",
+    "payment_status": "payment_status",
+    "delivery_staff": "delivery_staff",
+    "check_result": "check_result",
+    "shift": "shift"
+}
 
 
 def parse_date_param(value: str) -> Optional[tuple[str, str]]:
