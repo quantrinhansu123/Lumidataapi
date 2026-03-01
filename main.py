@@ -689,7 +689,7 @@ async def get_detail_reports(
     """
     Lấy danh sách detail_reports với bộ lọc theo query params.
     Các trường có thể filter: ten, ngay, ca, san_pham, thi_truong, team, cpqc, so_mess_cmt
-    Ví dụ: /detail_reports?team=Team%20A&ngay=01/02/2026
+    Ví dụ: /detail_reports?team=Team%20A&from_date=01/02/2026&to_date=10/02/2026
     """
     supabase = get_supabase()
     q = supabase.table("detail_reports").select("*")
@@ -698,12 +698,26 @@ async def get_detail_reports(
     params.pop("limit", None)
     params.pop("offset", None)
     params.pop("after_id", None)
+    
+    # Extract date_range từ params
+    from_date = params.pop("from_date", None)
+    to_date = params.pop("to_date", None)
+    date_column = params.pop("date_column", "ngay")
+    
+    date_range = None
+    if from_date or to_date:
+        date_range = {}
+        if from_date:
+            date_range["from"] = from_date
+        if to_date:
+            date_range["to"] = to_date
+    
     q = q.limit(50000)
 
     try:
         result = q.execute()
         normalized = [normalize_detail_reports_row(row) for row in result.data]
-        filtered = apply_detail_reports_filters_in_memory(normalized, params)
+        filtered = apply_detail_reports_filters_in_memory(normalized, params, date_range, date_column)
         filtered = sorted(filtered, key=lambda r: (str(r.get("id") or "")))
 
         if after_id:
