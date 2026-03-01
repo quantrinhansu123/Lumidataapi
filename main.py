@@ -788,11 +788,25 @@ async def get_detail_reports_statistics(filter_request: FilterRequest = Body(...
 async def get_detail_reports_statistics_by_params(request: Request) -> Any:
     """
     Tính toán thống kê từ bảng detail_reports dựa trên query params.
-    Ví dụ: /detail_reports/statistics?team=Team%20A&ngay=01/02/2026
+    Ví dụ: /detail_reports/statistics?team=Team%20A&ngay=01/02/2026&from_date=01/02/2026&to_date=10/02/2026
     """
     supabase = get_supabase()
     
     params = dict(request.query_params)
+    
+    # Extract date_range từ params
+    from_date = params.pop("from_date", None)
+    to_date = params.pop("to_date", None)
+    date_column = params.pop("date_column", "ngay")
+    
+    date_range = None
+    if from_date or to_date:
+        date_range = {}
+        if from_date:
+            date_range["from"] = from_date
+        if to_date:
+            date_range["to"] = to_date
+    
     stats_query = supabase.table("detail_reports").select("*")
     
     try:
@@ -801,6 +815,8 @@ async def get_detail_reports_statistics_by_params(request: Request) -> Any:
         filtered_reports = apply_detail_reports_filters_in_memory(
             reports=normalized_reports,
             filters=params,
+            date_range=date_range,
+            date_column=date_column,
         )
         statistics = calculate_detail_reports_statistics(filtered_reports)
         
@@ -808,6 +824,7 @@ async def get_detail_reports_statistics_by_params(request: Request) -> Any:
             content={
                 "statistics": statistics,
                 "filters_applied": params,
+                "date_range": date_range,
                 "total_records_analyzed": len(filtered_reports)
             },
             status_code=200,
