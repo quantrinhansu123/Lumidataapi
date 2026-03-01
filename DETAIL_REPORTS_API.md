@@ -83,6 +83,10 @@ Content-Type: application/json
       "total_mess_cmt": {
         "Nguyễn Văn A": 1500.0,
         "Trần Thị B": 1250.0
+      },
+      "total_cpqc": {
+        "Nguyễn Văn A": 800.0,
+        "Trần Thị B": 650.0
       }
     },
     "by_ca": {
@@ -95,15 +99,22 @@ Content-Type: application/json
         "Sáng": 2500.0,
         "Chiều": 1500.0,
         "Tối": 1000.0
+      },
+      "total_cpqc": {
+        "Sáng": 1300.0,
+        "Chiều": 900.0,
+        "Tối": 600.0
       }
     },
     "by_san_pham": {
       "count": {},
-      "total_mess_cmt": {}
+      "total_mess_cmt": {},
+      "total_cpqc": {}
     },
     "by_thi_truong": {
       "count": {},
-      "total_mess_cmt": {}
+      "total_mess_cmt": {},
+      "total_cpqc": {}
     },
     "by_team": {
       "count": {
@@ -113,16 +124,10 @@ Content-Type: application/json
       "total_mess_cmt": {
         "Team A": 3000.0,
         "Team B": 2000.0
-      }
-    },
-    "by_cpqc": {
-      "count": {
-        "Đạt": 80,
-        "Không đạt": 20
       },
-      "total_mess_cmt": {
-        "Đạt": 4000.0,
-        "Không đạt": 1000.0
+      "total_cpqc": {
+        "Team A": 1600.0,
+        "Team B": 1200.0
       }
     }
   },
@@ -303,12 +308,11 @@ $json.statistics.by_team.count.PSObject.Properties | ForEach-Object {
    - `average_mess_cmt`: Trung bình message/comment mỗi bản ghi
 
 2. **Thống kê theo nhóm:**
-   - `by_ten`: Count và total_mess_cmt theo tên nhân viên
-   - `by_ca`: Count và total_mess_cmt theo ca làm việc
-   - `by_san_pham`: Count và total_mess_cmt theo sản phẩm
-   - `by_thi_truong`: Count và total_mess_cmt theo thị trường
-   - `by_team`: Count và total_mess_cmt theo team
-   - `by_cpqc`: Count và total_mess_cmt theo CPQC
+  - `by_ten`: Count, total_mess_cmt và total_cpqc theo tên nhân viên
+  - `by_ca`: Count, total_mess_cmt và total_cpqc theo ca làm việc
+  - `by_san_pham`: Count, total_mess_cmt và total_cpqc theo sản phẩm
+  - `by_thi_truong`: Count, total_mess_cmt và total_cpqc theo thị trường
+  - `by_team`: Count, total_mess_cmt và total_cpqc theo team
 
 ## Lưu ý
 

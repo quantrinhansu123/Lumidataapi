@@ -131,6 +131,10 @@ DETAIL_REPORTS_RESPONSE_LABELS = {
     "Thị_trường": "thi_truong"
 }
 
+DETAIL_REPORTS_CANONICAL_COLUMNS = {
+    "ten", "ngay", "ca", "san_pham", "thi_truong", "team", "cpqc", "so_mess_cmt"
+}
+
 
 def parse_date_param(value: str) -> Optional[tuple[str, str]]:
     """Parse dd/mm/yyyy hoặc d/m/yyyy -> (yyyy-mm-dd 00:00:00, yyyy-mm-dd 23:59:59)."""
@@ -156,6 +160,139 @@ def parse_date_only(value: str) -> Optional[str]:
         except ValueError:
             continue
     return None
+
+
+def normalize_detail_reports_row(row: dict) -> dict:
+    """Chuẩn hóa key từ detail_reports về bộ key chuẩn để xử lý thống kê ổn định."""
+    normalized = {}
+    for raw_key, value in row.items():
+        key_str = str(raw_key).strip()
+        mapped_key = DETAIL_REPORTS_RESPONSE_LABELS.get(key_str)
+
+        if mapped_key is None:
+            lowered_key = key_str.lower()
+            for alias, canonical in DETAIL_REPORTS_RESPONSE_LABELS.items():
+                if str(alias).strip().lower() == lowered_key:
+                    mapped_key = canonical
+                    break
+
+        if mapped_key is None:
+            mapped_key = key_str
+
+        if mapped_key in normalized and normalized[mapped_key] not in (None, ""):
+            continue
+        normalized[mapped_key] = value
+
+    return normalized
+
+
+def normalize_date_value(value: Any) -> Optional[str]:
+    """Chuẩn hóa giá trị ngày về yyyy-mm-dd để so sánh."""
+    if value is None:
+        return None
+
+    if isinstance(value, datetime):
+        return value.strftime("%Y-%m-%d")
+
+    raw = str(value).strip()
+    if not raw:
+        return None
+
+    if "T" in raw:
+        raw = raw.split("T", 1)[0]
+    elif " " in raw and len(raw) >= 10 and raw[4] == "-":
+        raw = raw.split(" ", 1)[0]
+
+    return parse_date_only(raw)
+
+
+def apply_detail_reports_filters_in_memory(
+    reports: List[dict],
+    filters: Dict[str, Any],
+    date_range: Optional[Dict[str, str]] = None,
+    date_column: str = "ngay",
+) -> List[dict]:
+    """Lọc detail_reports trong Python theo key chuẩn, không phụ thuộc tên cột vật lý trong DB."""
+    filtered = reports
+
+    normalized_filters: Dict[str, Any] = {}
+    for col, val in (filters or {}).items():
+        if val is None:
+            continue
+        if isinstance(val, str) and not val.strip():
+            continue
+        if isinstance(val, list):
+            cleaned_list = [item for item in val if str(item).strip()]
+            if not cleaned_list:
+                continue
+            val = cleaned_list
+        mapped_col = DETAIL_REPORTS_RESPONSE_LABELS.get(col, col)
+        if mapped_col in DETAIL_REPORTS_CANONICAL_COLUMNS:
+            normalized_filters[mapped_col] = val
+
+    for col, val in normalized_filters.items():
+        if isinstance(val, list):
+            if col == "ngay":
+                allowed_dates = {
+                    parse_date_only(str(item))
+                    for item in val
+                    if str(item).strip()
+                }
+                allowed_dates = {d for d in allowed_dates if d}
+                if not allowed_dates:
+                    continue
+                filtered = [
+                    row for row in filtered
+                    if normalize_date_value(row.get("ngay")) in allowed_dates
+                ]
+            else:
+                allowed_values = {
+                    str(item).strip()
+                    for item in val
+                    if str(item).strip()
+                }
+                if not allowed_values:
+                    continue
+                filtered = [
+                    row for row in filtered
+                    if str(row.get(col) or "").strip() in allowed_values
+                ]
+        elif col == "ngay":
+            date_str = parse_date_only(str(val))
+            if date_str:
+                filtered = [
+                    row for row in filtered
+                    if normalize_date_value(row.get("ngay")) == date_str
+                ]
+        else:
+            target = str(val).strip()
+            filtered = [
+                row for row in filtered
+                if str(row.get(col) or "").strip() == target
+            ]
+
+    if date_range:
+        from_date = parse_date_only(str(date_range.get("from") or "")) if date_range.get("from") else None
+        to_date = parse_date_only(str(date_range.get("to") or "")) if date_range.get("to") else None
+
+        if from_date or to_date:
+            normalized_date_col = DETAIL_REPORTS_RESPONSE_LABELS.get(date_column, date_column)
+            if normalized_date_col not in DETAIL_REPORTS_CANONICAL_COLUMNS:
+                normalized_date_col = "ngay"
+
+            range_filtered = []
+            for row in filtered:
+                row_date = normalize_date_value(row.get(normalized_date_col))
+                if not row_date:
+                    continue
+                if from_date and row_date < from_date:
+                    continue
+                if to_date and row_date > to_date:
+                    continue
+                range_filtered.append(row)
+            filtered = range_filtered
+
+    return filtered
 
 
 def apply_filters_to_query(query, filters: dict):
@@ -555,42 +692,28 @@ async def get_detail_reports(
     Ví dụ: /detail_reports?team=Team%20A&ngay=01/02/2026
     """
     supabase = get_supabase()
-    q = supabase.table("detail_reports").select(DETAIL_REPORTS_SELECT_COLUMNS)
+    q = supabase.table("detail_reports").select("*")
 
     params = dict(request.query_params)
     params.pop("limit", None)
     params.pop("offset", None)
     params.pop("after_id", None)
-
-    for col, val in params.items():
-        if col not in ALL_DETAIL_REPORTS_COLUMNS or not val:
-            continue
-        if col in TIMESTAMP_COLUMNS:
-            parsed = parse_date_param(val)
-            if parsed:
-                day_start, day_end = parsed
-                q = q.gte(col, day_start).lte(col, day_end)
-        elif col in DATE_COLUMNS or col in ["ngay", "date"]:
-            date_str = parse_date_only(val)
-            if date_str:
-                q = q.eq(col, date_str)
-        else:
-            q = q.eq(col, val.strip())
-
-    if after_id:
-        q = q.gt("id", after_id.strip()).order("id", desc=False).limit(limit)
-        fetch_all_then_slice = False
-    else:
-        q = q.limit(1000).offset(0)
-        fetch_all_then_slice = True
+    q = q.limit(50000)
 
     try:
         result = q.execute()
-        raw = result.data
-        if fetch_all_then_slice:
-            raw = sorted(raw, key=lambda r: (r.get("id") or ""))
+        normalized = [normalize_detail_reports_row(row) for row in result.data]
+        filtered = apply_detail_reports_filters_in_memory(normalized, params)
+        filtered = sorted(filtered, key=lambda r: (str(r.get("id") or "")))
+
+        if after_id:
+            cursor = after_id.strip()
+            filtered = [row for row in filtered if str(row.get("id") or "") > cursor]
+            raw = filtered[:limit]
+        else:
             start = offset * limit
-            raw = raw[start : start + limit] if start < len(raw) else []
+            raw = filtered[start : start + limit] if start < len(filtered) else []
+
         data = []
         for row in raw:
             formatted_row = {}
@@ -632,61 +755,25 @@ async def get_detail_reports_statistics(filter_request: FilterRequest = Body(...
     """
     supabase = get_supabase()
     
-    # Query để lấy dữ liệu cho statistics
-    stats_query = supabase.table("detail_reports").select("ten, ngay, ca, san_pham, thi_truong, team, cpqc, so_mess_cmt")
-    
-    # Áp dụng date range nếu có
-    if filter_request.date_range:
-        from_date = filter_request.date_range.get("from")
-        to_date = filter_request.date_range.get("to")
-        date_col = filter_request.date_column or "ngay"
-        
-        if from_date:
-            if date_col in TIMESTAMP_COLUMNS:
-                parsed_from = parse_date_param(from_date)
-                if parsed_from:
-                    day_start, _ = parsed_from
-                    stats_query = stats_query.gte(date_col, day_start)
-            elif date_col in DATE_COLUMNS or date_col in ["ngay", "date"]:
-                date_str_from = parse_date_only(from_date)
-                if date_str_from:
-                    stats_query = stats_query.gte(date_col, date_str_from)
-        
-        if to_date:
-            if date_col in TIMESTAMP_COLUMNS:
-                parsed_to = parse_date_param(to_date)
-                if parsed_to:
-                    _, day_end = parsed_to
-                    stats_query = stats_query.lte(date_col, day_end)
-            elif date_col in DATE_COLUMNS or date_col in ["ngay", "date"]:
-                date_str_to = parse_date_only(to_date)
-                if date_str_to:
-                    stats_query = stats_query.lte(date_col, date_str_to)
-    
-    # Áp dụng các filter khác
-    for col, val in filter_request.filters.items():
-        if col not in ALL_DETAIL_REPORTS_COLUMNS or not val:
-            continue
-        if isinstance(val, list):
-            if len(val) > 0:
-                stats_query = stats_query.in_(col, val)
-        elif col in DATE_COLUMNS or col in ["ngay", "date"]:
-            date_str = parse_date_only(str(val))
-            if date_str:
-                stats_query = stats_query.eq(col, date_str)
-        else:
-            stats_query = stats_query.eq(col, str(val).strip())
+    stats_query = supabase.table("detail_reports").select("*")
     
     try:
         stats_result = stats_query.limit(50000).execute()
-        statistics = calculate_detail_reports_statistics(stats_result.data)
+        normalized_reports = [normalize_detail_reports_row(row) for row in stats_result.data]
+        filtered_reports = apply_detail_reports_filters_in_memory(
+            reports=normalized_reports,
+            filters=filter_request.filters,
+            date_range=filter_request.date_range,
+            date_column=filter_request.date_column or "ngay",
+        )
+        statistics = calculate_detail_reports_statistics(filtered_reports)
         
         return JSONResponse(
             content={
                 "statistics": statistics,
                 "filters_applied": filter_request.filters,
                 "date_range": filter_request.date_range,
-                "total_records_analyzed": len(stats_result.data)
+                "total_records_analyzed": len(filtered_reports)
             },
             status_code=200,
         )
@@ -705,34 +792,23 @@ async def get_detail_reports_statistics_by_params(request: Request) -> Any:
     """
     supabase = get_supabase()
     
-    stats_query = supabase.table("detail_reports").select("ten, ngay, ca, san_pham, thi_truong, team, cpqc, so_mess_cmt")
-    
     params = dict(request.query_params)
-    
-    for col, val in params.items():
-        if col not in ALL_DETAIL_REPORTS_COLUMNS or not val:
-            continue
-        if col in TIMESTAMP_COLUMNS:
-            parsed = parse_date_param(val)
-            if parsed:
-                day_start, day_end = parsed
-                stats_query = stats_query.gte(col, day_start).lte(col, day_end)
-        elif col in DATE_COLUMNS or col in ["ngay", "date"]:
-            date_str = parse_date_only(val)
-            if date_str:
-                stats_query = stats_query.eq(col, date_str)
-        else:
-            stats_query = stats_query.eq(col, val.strip())
+    stats_query = supabase.table("detail_reports").select("*")
     
     try:
         stats_result = stats_query.limit(50000).execute()
-        statistics = calculate_detail_reports_statistics(stats_result.data)
+        normalized_reports = [normalize_detail_reports_row(row) for row in stats_result.data]
+        filtered_reports = apply_detail_reports_filters_in_memory(
+            reports=normalized_reports,
+            filters=params,
+        )
+        statistics = calculate_detail_reports_statistics(filtered_reports)
         
         return JSONResponse(
             content={
                 "statistics": statistics,
                 "filters_applied": params,
-                "total_records_analyzed": len(stats_result.data)
+                "total_records_analyzed": len(filtered_reports)
             },
             status_code=200,
         )
@@ -755,8 +831,7 @@ def calculate_detail_reports_statistics(reports: list) -> dict:
             "by_ca": {},
             "by_san_pham": {},
             "by_thi_truong": {},
-            "by_team": {},
-            "by_cpqc": {}
+            "by_team": {}
         }
     
     total_records = len(reports)
@@ -786,10 +861,10 @@ def calculate_detail_reports_statistics(reports: list) -> dict:
         for row in reports_list:
             key = row.get(group_key) or "Unknown"
             count[key] = count.get(key, 0) + 1
+
             mess_cmt = float(row.get("so_mess_cmt") or 0)
             mess_cmt_sum[key] = mess_cmt_sum.get(key, 0) + mess_cmt
-            
-            # Tính CPQC cho từng nhóm
+
             cpqc_value = row.get("cpqc")
             if cpqc_value:
                 try:
@@ -804,7 +879,6 @@ def calculate_detail_reports_statistics(reports: list) -> dict:
     san_pham_count, san_pham_mess_cmt, san_pham_cpqc = calculate_group_stats(reports, "san_pham")
     thi_truong_count, thi_truong_mess_cmt, thi_truong_cpqc = calculate_group_stats(reports, "thi_truong")
     team_count, team_mess_cmt, team_cpqc = calculate_group_stats(reports, "team")
-    cpqc_count, cpqc_mess_cmt, cpqc_cpqc = calculate_group_stats(reports, "cpqc")
     
     return {
         "total_records": total_records,
@@ -835,11 +909,6 @@ def calculate_detail_reports_statistics(reports: list) -> dict:
             "count": team_count,
             "total_mess_cmt": {k: round(v, 2) for k, v in team_mess_cmt.items()},
             "total_cpqc": {k: round(v, 2) for k, v in team_cpqc.items()}
-        },
-        "by_cpqc": {
-            "count": cpqc_count,
-            "total_mess_cmt": {k: round(v, 2) for k, v in cpqc_mess_cmt.items()},
-            "total_cpqc": {k: round(v, 2) for k, v in cpqc_cpqc.items()}
         }
     }
 
