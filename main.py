@@ -410,17 +410,27 @@ async def get_statistics_by_filter(filter_request: FilterRequest = Body(...)) ->
         to_date = filter_request.date_range.get("to")
         date_col = filter_request.date_column or "created_at"
         
-        if from_date and date_col in TIMESTAMP_COLUMNS:
-            parsed_from = parse_date_param(from_date)
-            if parsed_from:
-                day_start, _ = parsed_from
-                stats_query = stats_query.gte(date_col, day_start)
+        if from_date:
+            if date_col in TIMESTAMP_COLUMNS:
+                parsed_from = parse_date_param(from_date)
+                if parsed_from:
+                    day_start, _ = parsed_from
+                    stats_query = stats_query.gte(date_col, day_start)
+            elif date_col in DATE_COLUMNS:
+                date_str_from = parse_date_only(from_date)
+                if date_str_from:
+                    stats_query = stats_query.gte(date_col, date_str_from)
         
-        if to_date and date_col in TIMESTAMP_COLUMNS:
-            parsed_to = parse_date_param(to_date)
-            if parsed_to:
-                _, day_end = parsed_to
-                stats_query = stats_query.lte(date_col, day_end)
+        if to_date:
+            if date_col in TIMESTAMP_COLUMNS:
+                parsed_to = parse_date_param(to_date)
+                if parsed_to:
+                    _, day_end = parsed_to
+                    stats_query = stats_query.lte(date_col, day_end)
+            elif date_col in DATE_COLUMNS:
+                date_str_to = parse_date_only(to_date)
+                if date_str_to:
+                    stats_query = stats_query.lte(date_col, date_str_to)
     
     # Áp dụng các filter khác
     stats_query = apply_filters_to_query(stats_query, filter_request.filters)
