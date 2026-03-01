@@ -28,7 +28,7 @@ def get_supabase() -> Client:
     return _supabase
 
 
-app = FastAPI(title="Orders API", description="Query orders from Subabase by GET params")
+app = FastAPI(title="Orders API", description="Query orders and detail_reports from Subabase by GET params")
 
 
 class FilterRequest(BaseModel):
@@ -43,6 +43,8 @@ DATE_COLUMNS = {
     "postponed_date",
     "accounting_check_date",
     "estimated_delivery_date",
+    "ngay",  # detail_reports
+    "date",  # detail_reports
 }
 
 # Cột timestamp - filter theo ngày (gte 00:00, lte 23:59:59)
@@ -91,6 +93,42 @@ RESPONSE_LABELS = {
     "delivery_staff": "delivery_staff",
     "check_result": "check_result",
     "shift": "shift"
+}
+
+# Các cột của bảng detail_reports
+ALL_DETAIL_REPORTS_COLUMNS = {
+    "id", "ten", "ngay", "ca", "san_pham", "thi_truong", "team", "cpqc", "so_mess_cmt",
+    # Các tên có thể khác
+    "name", "date", "shift", "product", "market", "so_mess_cmt",
+    # Tên với dấu gạch dưới
+    "Tên", "Ngày", "ca", "Sản_phẩm", "Thị_trường", "Team", "CPQC", "Số_Mess_Cmt"
+}
+
+# Cột trả về từ detail_reports API - lấy tất cả các cột có thể
+DETAIL_REPORTS_SELECT_COLUMNS = "*"
+DETAIL_REPORTS_RESPONSE_LABELS = {
+    "id": "id",
+    "ten": "ten",
+    "ngay": "ngay",
+    "ca": "ca",
+    "san_pham": "san_pham",
+    "thi_truong": "thi_truong",
+    "team": "team",
+    "cpqc": "cpqc",
+    "so_mess_cmt": "so_mess_cmt",
+    # Các tên có thể khác
+    "name": "ten",
+    "date": "ngay",
+    "shift": "ca",
+    "product": "san_pham",
+    "market": "thi_truong",
+    "Team": "team",
+    "CPQC": "cpqc",
+    "Số_Mess_Cmt": "so_mess_cmt",
+    "Tên": "ten",
+    "Ngày": "ngay",
+    "Sản_phẩm": "san_pham",
+    "Thị_trường": "thi_truong"
 }
 
 
@@ -504,12 +542,283 @@ async def get_statistics_by_query_params(request: Request) -> Any:
         )
 
 
+@app.get("/detail_reports")
+async def get_detail_reports(
+    request: Request,
+    limit: int = Query(100, ge=1, le=1000, description="Số bản ghi tối đa"),
+    offset: int = Query(0, ge=0, description="Vị trí bắt đầu"),
+    after_id: Optional[str] = Query(None, description="Cursor: id bản ghi cuối trang trước"),
+) -> Any:
+    """
+    Lấy danh sách detail_reports với bộ lọc theo query params.
+    Các trường có thể filter: ten, ngay, ca, san_pham, thi_truong, team, cpqc, so_mess_cmt
+    Ví dụ: /detail_reports?team=Team%20A&ngay=01/02/2026
+    """
+    supabase = get_supabase()
+    q = supabase.table("detail_reports").select(DETAIL_REPORTS_SELECT_COLUMNS)
+
+    params = dict(request.query_params)
+    params.pop("limit", None)
+    params.pop("offset", None)
+    params.pop("after_id", None)
+
+    for col, val in params.items():
+        if col not in ALL_DETAIL_REPORTS_COLUMNS or not val:
+            continue
+        if col in TIMESTAMP_COLUMNS:
+            parsed = parse_date_param(val)
+            if parsed:
+                day_start, day_end = parsed
+                q = q.gte(col, day_start).lte(col, day_end)
+        elif col in DATE_COLUMNS or col in ["ngay", "date"]:
+            date_str = parse_date_only(val)
+            if date_str:
+                q = q.eq(col, date_str)
+        else:
+            q = q.eq(col, val.strip())
+
+    if after_id:
+        q = q.gt("id", after_id.strip()).order("id", desc=False).limit(limit)
+        fetch_all_then_slice = False
+    else:
+        q = q.limit(1000).offset(0)
+        fetch_all_then_slice = True
+
+    try:
+        result = q.execute()
+        raw = result.data
+        if fetch_all_then_slice:
+            raw = sorted(raw, key=lambda r: (r.get("id") or ""))
+            start = offset * limit
+            raw = raw[start : start + limit] if start < len(raw) else []
+        data = []
+        for row in raw:
+            formatted_row = {}
+            for k, v in row.items():
+                # Map tên cột về tên chuẩn
+                mapped_key = DETAIL_REPORTS_RESPONSE_LABELS.get(k, k)
+                formatted_row[mapped_key] = v
+            data.append(formatted_row)
+        last_id = data[-1]["id"] if data else None
+        return JSONResponse(
+            content={"data": data, "count": len(data), "next_after_id": last_id},
+            status_code=200,
+        )
+    except Exception as e:
+        return JSONResponse(
+            content={"error": str(e), "data": []},
+            status_code=500,
+        )
+
+
+@app.post("/detail_reports/statistics")
+async def get_detail_reports_statistics(filter_request: FilterRequest = Body(...)) -> Any:
+    """
+    Tính toán thống kê từ bảng detail_reports dựa trên bộ lọc từ FE.
+    
+    Body example:
+    {
+        "filters": {
+            "team": ["Team A", "Team B"],
+            "ten": "Nguyễn Văn A",
+            "ca": "Sáng"
+        },
+        "date_range": {
+            "from": "01/02/2026",
+            "to": "10/02/2026"
+        },
+        "date_column": "ngay"
+    }
+    """
+    supabase = get_supabase()
+    
+    # Query để lấy dữ liệu cho statistics
+    stats_query = supabase.table("detail_reports").select("ten, ngay, ca, san_pham, thi_truong, team, cpqc, so_mess_cmt")
+    
+    # Áp dụng date range nếu có
+    if filter_request.date_range:
+        from_date = filter_request.date_range.get("from")
+        to_date = filter_request.date_range.get("to")
+        date_col = filter_request.date_column or "ngay"
+        
+        if from_date:
+            if date_col in TIMESTAMP_COLUMNS:
+                parsed_from = parse_date_param(from_date)
+                if parsed_from:
+                    day_start, _ = parsed_from
+                    stats_query = stats_query.gte(date_col, day_start)
+            elif date_col in DATE_COLUMNS or date_col in ["ngay", "date"]:
+                date_str_from = parse_date_only(from_date)
+                if date_str_from:
+                    stats_query = stats_query.gte(date_col, date_str_from)
+        
+        if to_date:
+            if date_col in TIMESTAMP_COLUMNS:
+                parsed_to = parse_date_param(to_date)
+                if parsed_to:
+                    _, day_end = parsed_to
+                    stats_query = stats_query.lte(date_col, day_end)
+            elif date_col in DATE_COLUMNS or date_col in ["ngay", "date"]:
+                date_str_to = parse_date_only(to_date)
+                if date_str_to:
+                    stats_query = stats_query.lte(date_col, date_str_to)
+    
+    # Áp dụng các filter khác
+    for col, val in filter_request.filters.items():
+        if col not in ALL_DETAIL_REPORTS_COLUMNS or not val:
+            continue
+        if isinstance(val, list):
+            if len(val) > 0:
+                stats_query = stats_query.in_(col, val)
+        elif col in DATE_COLUMNS or col in ["ngay", "date"]:
+            date_str = parse_date_only(str(val))
+            if date_str:
+                stats_query = stats_query.eq(col, date_str)
+        else:
+            stats_query = stats_query.eq(col, str(val).strip())
+    
+    try:
+        stats_result = stats_query.limit(50000).execute()
+        statistics = calculate_detail_reports_statistics(stats_result.data)
+        
+        return JSONResponse(
+            content={
+                "statistics": statistics,
+                "filters_applied": filter_request.filters,
+                "date_range": filter_request.date_range,
+                "total_records_analyzed": len(stats_result.data)
+            },
+            status_code=200,
+        )
+    except Exception as e:
+        return JSONResponse(
+            content={"error": str(e), "statistics": {}},
+            status_code=500,
+        )
+
+
+@app.get("/detail_reports/statistics")
+async def get_detail_reports_statistics_by_params(request: Request) -> Any:
+    """
+    Tính toán thống kê từ bảng detail_reports dựa trên query params.
+    Ví dụ: /detail_reports/statistics?team=Team%20A&ngay=01/02/2026
+    """
+    supabase = get_supabase()
+    
+    stats_query = supabase.table("detail_reports").select("ten, ngay, ca, san_pham, thi_truong, team, cpqc, so_mess_cmt")
+    
+    params = dict(request.query_params)
+    
+    for col, val in params.items():
+        if col not in ALL_DETAIL_REPORTS_COLUMNS or not val:
+            continue
+        if col in TIMESTAMP_COLUMNS:
+            parsed = parse_date_param(val)
+            if parsed:
+                day_start, day_end = parsed
+                stats_query = stats_query.gte(col, day_start).lte(col, day_end)
+        elif col in DATE_COLUMNS or col in ["ngay", "date"]:
+            date_str = parse_date_only(val)
+            if date_str:
+                stats_query = stats_query.eq(col, date_str)
+        else:
+            stats_query = stats_query.eq(col, val.strip())
+    
+    try:
+        stats_result = stats_query.limit(50000).execute()
+        statistics = calculate_detail_reports_statistics(stats_result.data)
+        
+        return JSONResponse(
+            content={
+                "statistics": statistics,
+                "filters_applied": params,
+                "total_records_analyzed": len(stats_result.data)
+            },
+            status_code=200,
+        )
+    except Exception as e:
+        return JSONResponse(
+            content={"error": str(e), "statistics": {}},
+            status_code=500,
+        )
+
+
+def calculate_detail_reports_statistics(reports: list) -> dict:
+    """Tính toán thống kê từ danh sách detail_reports."""
+    if not reports:
+        return {
+            "total_records": 0,
+            "total_mess_cmt": 0,
+            "average_mess_cmt": 0,
+            "by_ten": {},
+            "by_ca": {},
+            "by_san_pham": {},
+            "by_thi_truong": {},
+            "by_team": {},
+            "by_cpqc": {}
+        }
+    
+    total_records = len(reports)
+    total_mess_cmt = sum(float(row.get("so_mess_cmt") or 0) for row in reports)
+    avg_mess_cmt = total_mess_cmt / total_records if total_records > 0 else 0
+    
+    def calculate_group_stats(reports_list, group_key):
+        count = {}
+        mess_cmt_sum = {}
+        for row in reports_list:
+            key = row.get(group_key) or "Unknown"
+            count[key] = count.get(key, 0) + 1
+            mess_cmt = float(row.get("so_mess_cmt") or 0)
+            mess_cmt_sum[key] = mess_cmt_sum.get(key, 0) + mess_cmt
+        return count, mess_cmt_sum
+    
+    ten_count, ten_mess_cmt = calculate_group_stats(reports, "ten")
+    ca_count, ca_mess_cmt = calculate_group_stats(reports, "ca")
+    san_pham_count, san_pham_mess_cmt = calculate_group_stats(reports, "san_pham")
+    thi_truong_count, thi_truong_mess_cmt = calculate_group_stats(reports, "thi_truong")
+    team_count, team_mess_cmt = calculate_group_stats(reports, "team")
+    cpqc_count, cpqc_mess_cmt = calculate_group_stats(reports, "cpqc")
+    
+    return {
+        "total_records": total_records,
+        "total_mess_cmt": round(total_mess_cmt, 2),
+        "average_mess_cmt": round(avg_mess_cmt, 2),
+        "by_ten": {
+            "count": ten_count,
+            "total_mess_cmt": {k: round(v, 2) for k, v in ten_mess_cmt.items()}
+        },
+        "by_ca": {
+            "count": ca_count,
+            "total_mess_cmt": {k: round(v, 2) for k, v in ca_mess_cmt.items()}
+        },
+        "by_san_pham": {
+            "count": san_pham_count,
+            "total_mess_cmt": {k: round(v, 2) for k, v in san_pham_mess_cmt.items()}
+        },
+        "by_thi_truong": {
+            "count": thi_truong_count,
+            "total_mess_cmt": {k: round(v, 2) for k, v in thi_truong_mess_cmt.items()}
+        },
+        "by_team": {
+            "count": team_count,
+            "total_mess_cmt": {k: round(v, 2) for k, v in team_mess_cmt.items()}
+        },
+        "by_cpqc": {
+            "count": cpqc_count,
+            "total_mess_cmt": {k: round(v, 2) for k, v in cpqc_mess_cmt.items()}
+        }
+    }
+
+
 @app.get("/")
 def root():
     return {
         "message": "Orders API",
         "docs": "/docs",
         "orders": "GET /orders?created_at=22/12/2026&city=Carson",
-        "statistics_get": "GET /orders/statistics?created_at=01/03/2026&team=Team%20A",
-        "statistics_post": "POST /orders/statistics với body JSON"
+        "orders_statistics_get": "GET /orders/statistics?created_at=01/03/2026&team=Team%20A",
+        "orders_statistics_post": "POST /orders/statistics với body JSON",
+        "detail_reports": "GET /detail_reports?team=Team%20A&ngay=01/02/2026",
+        "detail_reports_statistics_get": "GET /detail_reports/statistics?team=Team%20A&ngay=01/02/2026",
+        "detail_reports_statistics_post": "POST /detail_reports/statistics với body JSON"
     }
