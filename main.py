@@ -748,6 +748,7 @@ def calculate_detail_reports_statistics(reports: list) -> dict:
     if not reports:
         return {
             "total_records": 0,
+            "total_cpqc": 0,
             "total_mess_cmt": 0,
             "average_mess_cmt": 0,
             "by_ten": {},
@@ -759,53 +760,86 @@ def calculate_detail_reports_statistics(reports: list) -> dict:
         }
     
     total_records = len(reports)
+    
+    # Tính tổng CPQC (đếm số lượng bản ghi có CPQC, hoặc tổng giá trị nếu CPQC là số)
+    total_cpqc = 0
+    cpqc_values = []
+    for row in reports:
+        cpqc_value = row.get("cpqc")
+        if cpqc_value:
+            # Nếu CPQC là số, cộng vào tổng
+            try:
+                total_cpqc += float(cpqc_value)
+            except (ValueError, TypeError):
+                # Nếu không phải số, đếm số lượng (mỗi giá trị khác None/null = 1)
+                total_cpqc += 1
+            cpqc_values.append(cpqc_value)
+    
+    # Tính tổng Số_Mess_Cmt
     total_mess_cmt = sum(float(row.get("so_mess_cmt") or 0) for row in reports)
     avg_mess_cmt = total_mess_cmt / total_records if total_records > 0 else 0
     
     def calculate_group_stats(reports_list, group_key):
         count = {}
         mess_cmt_sum = {}
+        cpqc_sum = {}
         for row in reports_list:
             key = row.get(group_key) or "Unknown"
             count[key] = count.get(key, 0) + 1
             mess_cmt = float(row.get("so_mess_cmt") or 0)
             mess_cmt_sum[key] = mess_cmt_sum.get(key, 0) + mess_cmt
-        return count, mess_cmt_sum
+            
+            # Tính CPQC cho từng nhóm
+            cpqc_value = row.get("cpqc")
+            if cpqc_value:
+                try:
+                    cpqc_val = float(cpqc_value)
+                    cpqc_sum[key] = cpqc_sum.get(key, 0) + cpqc_val
+                except (ValueError, TypeError):
+                    cpqc_sum[key] = cpqc_sum.get(key, 0) + 1
+        return count, mess_cmt_sum, cpqc_sum
     
-    ten_count, ten_mess_cmt = calculate_group_stats(reports, "ten")
-    ca_count, ca_mess_cmt = calculate_group_stats(reports, "ca")
-    san_pham_count, san_pham_mess_cmt = calculate_group_stats(reports, "san_pham")
-    thi_truong_count, thi_truong_mess_cmt = calculate_group_stats(reports, "thi_truong")
-    team_count, team_mess_cmt = calculate_group_stats(reports, "team")
-    cpqc_count, cpqc_mess_cmt = calculate_group_stats(reports, "cpqc")
+    ten_count, ten_mess_cmt, ten_cpqc = calculate_group_stats(reports, "ten")
+    ca_count, ca_mess_cmt, ca_cpqc = calculate_group_stats(reports, "ca")
+    san_pham_count, san_pham_mess_cmt, san_pham_cpqc = calculate_group_stats(reports, "san_pham")
+    thi_truong_count, thi_truong_mess_cmt, thi_truong_cpqc = calculate_group_stats(reports, "thi_truong")
+    team_count, team_mess_cmt, team_cpqc = calculate_group_stats(reports, "team")
+    cpqc_count, cpqc_mess_cmt, cpqc_cpqc = calculate_group_stats(reports, "cpqc")
     
     return {
         "total_records": total_records,
-        "total_mess_cmt": round(total_mess_cmt, 2),
+        "total_cpqc": round(total_cpqc, 2),  # Tổng CPQC
+        "total_mess_cmt": round(total_mess_cmt, 2),  # Tổng Số_Mess_Cmt
         "average_mess_cmt": round(avg_mess_cmt, 2),
         "by_ten": {
             "count": ten_count,
-            "total_mess_cmt": {k: round(v, 2) for k, v in ten_mess_cmt.items()}
+            "total_mess_cmt": {k: round(v, 2) for k, v in ten_mess_cmt.items()},
+            "total_cpqc": {k: round(v, 2) for k, v in ten_cpqc.items()}
         },
         "by_ca": {
             "count": ca_count,
-            "total_mess_cmt": {k: round(v, 2) for k, v in ca_mess_cmt.items()}
+            "total_mess_cmt": {k: round(v, 2) for k, v in ca_mess_cmt.items()},
+            "total_cpqc": {k: round(v, 2) for k, v in ca_cpqc.items()}
         },
         "by_san_pham": {
             "count": san_pham_count,
-            "total_mess_cmt": {k: round(v, 2) for k, v in san_pham_mess_cmt.items()}
+            "total_mess_cmt": {k: round(v, 2) for k, v in san_pham_mess_cmt.items()},
+            "total_cpqc": {k: round(v, 2) for k, v in san_pham_cpqc.items()}
         },
         "by_thi_truong": {
             "count": thi_truong_count,
-            "total_mess_cmt": {k: round(v, 2) for k, v in thi_truong_mess_cmt.items()}
+            "total_mess_cmt": {k: round(v, 2) for k, v in thi_truong_mess_cmt.items()},
+            "total_cpqc": {k: round(v, 2) for k, v in thi_truong_cpqc.items()}
         },
         "by_team": {
             "count": team_count,
-            "total_mess_cmt": {k: round(v, 2) for k, v in team_mess_cmt.items()}
+            "total_mess_cmt": {k: round(v, 2) for k, v in team_mess_cmt.items()},
+            "total_cpqc": {k: round(v, 2) for k, v in team_cpqc.items()}
         },
         "by_cpqc": {
             "count": cpqc_count,
-            "total_mess_cmt": {k: round(v, 2) for k, v in cpqc_mess_cmt.items()}
+            "total_mess_cmt": {k: round(v, 2) for k, v in cpqc_mess_cmt.items()},
+            "total_cpqc": {k: round(v, 2) for k, v in cpqc_cpqc.items()}
         }
     }
 
