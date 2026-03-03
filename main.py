@@ -8,6 +8,7 @@ from typing import Any, Optional, Dict, List
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Query, Request, Body
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from supabase import create_client, Client
 from pydantic import BaseModel
@@ -29,6 +30,14 @@ def get_supabase() -> Client:
 
 
 app = FastAPI(title="Orders API", description="Query orders and detail_reports from Subabase by GET params")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 class FilterRequest(BaseModel):
@@ -968,6 +977,11 @@ async def get_detail_reports_statistics_by_params(request: Request) -> Any:
     from_date = params.pop("from_date", None)
     to_date = params.pop("to_date", None)
     date_column = params.pop("date_column", "ngay")
+    marketing_staff = params.pop("marketing_staff", None)
+    
+    # Nếu có marketing_staff filter, thêm vào params để filter detail_reports theo "ten"
+    if marketing_staff:
+        params["ten"] = marketing_staff
     
     # Lưu lại filters (ca, san_pham, thi_truong) - chỉ những có giá trị không trống
     breakdowns_filters = {
@@ -986,8 +1000,26 @@ async def get_detail_reports_statistics_by_params(request: Request) -> Any:
     
     stats_query = supabase.table("detail_reports").select("*")
     
-    # Query orders table - KHÔNG filter date, lấy toàn bộ để match với staff names
+    # Query orders table - filter theo marketing_staff + date range
     orders_query = supabase.table("orders").select("marketing_staff, total_vnd")
+    
+    # Apply marketing_staff filter to orders
+    if marketing_staff:
+        orders_query = orders_query.eq("marketing_staff", marketing_staff.strip())
+    
+    # Apply date range filter to orders (theo created_at)
+    if from_date:
+        parsed_from = parse_date_param(from_date)
+        if parsed_from:
+            day_start, _ = parsed_from
+            # Filter by order_date (date column) instead of created_at
+            orders_query = orders_query.gte("order_date", day_start.split("T")[0])
+    if to_date:
+        parsed_to = parse_date_param(to_date)
+        if parsed_to:
+            _, day_end = parsed_to
+            # Filter by order_date (date column) instead of created_at
+            orders_query = orders_query.lte("order_date", day_end.split("T")[0])
     
     try:
         stats_result = stats_query.limit(50000).execute()
@@ -1003,6 +1035,11 @@ async def get_detail_reports_statistics_by_params(request: Request) -> Any:
         
         # Extract unique staff names từ filtered detail_reports
         staff_names_in_report = list(set(row.get("ten") for row in filtered_reports if row.get("ten")))
+        
+        # Nếu có marketing_staff filter, thêm vào staff_names_in_report để xem data từ orders
+        if marketing_staff:
+            if marketing_staff.strip() not in staff_names_in_report:
+                staff_names_in_report.append(marketing_staff.strip())
         
         # Query orders count với same date_range
         orders_count_query = supabase.table("orders").select("id")
@@ -1025,7 +1062,8 @@ async def get_detail_reports_statistics_by_params(request: Request) -> Any:
             filters=breakdowns_filters,
             orders_data=orders_result.data,
             staff_names=staff_names_in_report,
-            orders_count=orders_count_value
+            orders_count=orders_count_value,
+            marketing_staff=marketing_staff
         )
         
         return JSONResponse(
@@ -1044,7 +1082,7 @@ async def get_detail_reports_statistics_by_params(request: Request) -> Any:
         )
 
 
-def calculate_detail_reports_statistics(reports: list, filters: dict = None, orders_data: list = None, staff_names: list = None, orders_count: int = 0) -> dict:
+def calculate_detail_reports_statistics(reports: list, filters: dict = None, orders_data: list = None, staff_names: list = None, orders_count: int = 0, marketing_staff: str = None) -> dict:
     """
     Tính toán thống kê từ danh sách detail_reports.
     - by_ten: luôn có, bao gồm count, total_mess_cmt, total_cpqc, total_vnd (từ orders)
@@ -1054,13 +1092,40 @@ def calculate_detail_reports_statistics(reports: list, filters: dict = None, ord
     - orders_count: tổng số đơn hàng từ bảng orders theo các filter
     """
     if not reports:
+        # Even if no detail_reports, if marketing_staff was provided and has orders, include them
+        by_ten_empty = {}
+        if marketing_staff and orders_data:
+            # Create case-insensitive lookup for orders
+            staff_vnd = 0
+            staff_order_count = 0
+            for order in orders_data:
+                order_staff = order.get("marketing_staff")
+                if order_staff and str(order_staff).strip().lower() == marketing_staff.strip().lower():
+                    total_vnd = order.get("total_vnd") or 0
+                    try:
+                        staff_vnd += float(total_vnd)
+                    except (ValueError, TypeError):
+                        pass
+                    staff_order_count += 1
+            
+            # If we found orders for this staff, include them in the response
+            if staff_vnd > 0 or staff_order_count > 0:
+                by_ten_empty = {
+                    "count": {marketing_staff.strip(): 0},
+                    "total_mess_cmt": {marketing_staff.strip(): 0},
+                    "total_cpqc": {marketing_staff.strip(): 0},
+                    "gia_mess": {marketing_staff.strip(): 0},
+                    "total_vnd": {marketing_staff.strip(): round(staff_vnd, 2)},
+                    "total_sodon": {marketing_staff.strip(): staff_order_count}
+                }
+        
         return {
             "total_count": orders_count,
             "total_cpqc": 0,
             "total_mess_cmt": 0,
             "average_mess_cmt": 0,
             "gia_mess": 0,
-            "by_ten": {},
+            "by_ten": by_ten_empty,
             "by_ngay": {}
         }
     
@@ -1168,13 +1233,33 @@ def calculate_detail_reports_statistics(reports: list, filters: dict = None, ord
         }
 
     # Tính by_ten và by_ngay
+    by_ten_result = calculate_breakdown(reports, "ten", include_total_vnd=True, normalize_day=False)
+    
+    # Nếu marketing_staff filter được áp dụng, đảm bảo có staff này trong kết quả (ngay cả nếu không có detai_reports)
+    if marketing_staff and marketing_staff.strip() not in by_ten_result.get("count", {}):
+        staff_name = marketing_staff.strip()
+        # Thêm staff vào với dữ liệu từ orders
+        if staff_name in staff_vnd_map or staff_name in staff_order_count_map:
+            by_ten_result["count"][staff_name] = staff_order_count_map.get(staff_name, 0)
+            by_ten_result["total_mess_cmt"][staff_name] = 0
+            by_ten_result["total_cpqc"][staff_name] = 0
+            by_ten_result["gia_mess"][staff_name] = 0
+            if staff_name in staff_vnd_map:
+                if "total_vnd" not in by_ten_result:
+                    by_ten_result["total_vnd"] = {}
+                by_ten_result["total_vnd"][staff_name] = round(staff_vnd_map[staff_name], 2)
+            if staff_name in staff_order_count_map:
+                if "total_sodon" not in by_ten_result:
+                    by_ten_result["total_sodon"] = {}
+                by_ten_result["total_sodon"][staff_name] = staff_order_count_map[staff_name]
+    
     return {
         "total_count": orders_count,
         "total_cpqc": round(total_cpqc, 2),
         "total_mess_cmt": round(total_mess_cmt, 2),
         "average_mess_cmt": round(avg_mess_cmt, 2),
         "gia_mess": round((total_cpqc / total_mess_cmt), 6) if total_mess_cmt else 0,
-        "by_ten": calculate_breakdown(reports, "ten", include_total_vnd=True, normalize_day=False),
+        "by_ten": by_ten_result,
         "by_ngay": by_ngay
     }
 

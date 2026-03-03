@@ -1,0 +1,137 @@
+﻿{
+    "statistics":  {
+                       "total_records":  533,
+                       "total_cpqc":  1073193030.1,
+                       "total_mess_cmt":  15420.0,
+                       "average_mess_cmt":  28.93,
+                       "by_ten":  {
+                                      "count":  {
+                                                    "Nguyá»\u0085n Hiá»n LÆ°Æ¡ng":  58,
+                                                    "Lá»¥c Tráº§n Minh TrÃ­":  78,
+                                                    "Nguyá»\u0085n Thá» Hiáº¿u":  74,
+                                                    "Tráº§n Quá»c Kháº£i":  57,
+                                                    "Máº¡nh CÆ°á»ng":  29,
+                                                    "Nguyá»\u0085n Quang TrÆ°á»ng":  85,
+                                                    "VÅ© Viáº¿t Anh":  48,
+                                                    "Tráº§n Huy HÃ¹ng":  41,
+                                                    "Nguyá»\u0085n Thá» NhÆ° Quá»³nh":  3,
+                                                    "Pháº¡m Tiáº¿n ThÃ nh":  45,
+                                                    "ÄoÃ n Ngá»c HuÃ¢n":  5,
+                                                    "Äá» Máº¡nh CÆ°á»ng":  10
+                                                },
+                                      "total_mess_cmt":  {
+                                                             "Nguyá»\u0085n Hiá»n LÆ°Æ¡ng":  1348.0,
+                                                             "Lá»¥c Tráº§n Minh TrÃ­":  1123.0,
+                                                             "Nguyá»\u0085n Thá» Hiáº¿u":  1453.0,
+                                                             "Tráº§n Quá»c Kháº£i":  2758.0,
+                                                             "Máº¡nh CÆ°á»ng":  1205.0,
+                                                             "Nguyá»\u0085n Quang TrÆ°á»ng":  2320.0,
+                                                             "VÅ© Viáº¿t Anh":  1444.0,
+                                                             "Tráº§n Huy HÃ¹ng":  1698.0,
+                                                             "Nguyá»\u0085n Thá» NhÆ° Quá»³nh":  214.0,
+                                                             "Pháº¡m Tiáº¿n ThÃ nh":  1486.0,
+                                                             "ÄoÃ n Ngá»c HuÃ¢n":  269.0,
+                                                             "Äá» Máº¡nh CÆ°á»ng":  102.0
+                                                         },
+                                      "total_cpqc":  {
+                                                         "Nguyá»\u0085n Hiá»n LÆ°Æ¡ng":  94522979.48,
+                                                         "Lá»¥c Tráº§n Minh TrÃ­":  17382334.53,
+                                                         "Tráº§n Quá»c Kháº£i":  230379174.64,
+                                                         "Máº¡nh CÆ°á»ng":  77169477.57,
+                                                         "Nguyá»\u0085n Quang TrÆ°á»ng":  156035159.43,
+                                                         "VÅ© Viáº¿t Anh":  133336155.05,
+                                                         "Tráº§n Huy HÃ¹ng":  93757195.35,
+                                                         "Nguyá»\u0085n Thá» NhÆ° Quá»³nh":  22010766.0,
+                                                         "Pháº¡m Tiáº¿n ThÃ nh":  176524412.99,
+                                                         "ÄoÃ n Ngá»c HuÃ¢n":  17242071.4,
+                                                         "Nguyá»\u0085n Thá» Hiáº¿u":  54831757.09,
+                                                         "Äá» Máº¡nh CÆ°á»ng":  1546.59
+                                                     }
+                                  },
+                       "by_ca":  {
+                                     "count":  {
+                                                   "Háº¿t ca":  488,
+                                                   "Giá»¯a ca":  45
+                                               },
+                                     "total_mess_cmt":  {
+                                                            "Háº¿t ca":  14643.0,
+                                                            "Giá»¯a ca":  777.0
+                                                        },
+                                     "total_cpqc":  {
+                                                        "Háº¿t ca":  1022007243.02,
+                                                        "Giá»¯a ca":  51185787.08
+                                                    }
+                                 },
+                       "by_san_pham":  {
+                                           "count":  {
+                                                         "DG":  1,
+                                                         "Bonavita Coffee":  297,
+                                                         "Kem Body":  174,
+                                                         "Fitgum CAFE 20X":  31,
+                                                         "Brusko coffe":  10,
+                                                         "Bakuchiol Retinol":  17,
+                                                         "Unknown":  1,
+                                                         "Serum SÃ¢m":  1,
+                                                         "Gel XÆ°Æ¡ng Khá»p":  1
+                                                     },
+                                           "total_mess_cmt":  {
+                                                                  "DG":  12.0,
+                                                                  "Bonavita Coffee":  8949.0,
+                                                                  "Kem Body":  5618.0,
+                                                                  "Fitgum CAFE 20X":  486.0,
+                                                                  "Brusko coffe":  285.0,
+                                                                  "Bakuchiol Retinol":  70.0,
+                                                                  "Unknown":  0.0,
+                                                                  "Serum SÃ¢m":  0.0,
+                                                                  "Gel XÆ°Æ¡ng Khá»p":  0.0
+                                                              },
+                                           "total_cpqc":  {
+                                                              "DG":  12.0,
+                                                              "Bonavita Coffee":  520864582.2,
+                                                              "Kem Body":  509394348.59,
+                                                              "Fitgum CAFE 20X":  36626157.0,
+                                                              "Brusko coffe":  1245.32,
+                                                              "Bakuchiol Retinol":  6306685.0
+                                                          }
+                                       },
+                       "by_thi_truong":  {
+                                             "count":  {
+                                                           "Nháº­t Báº£n":  17,
+                                                           "US":  428,
+                                                           "Canada":  85,
+                                                           "HÃ n Quá»c":  2,
+                                                           "Ãc":  1
+                                                       },
+                                             "total_mess_cmt":  {
+                                                                    "Nháº­t Báº£n":  219.0,
+                                                                    "US":  14014.0,
+                                                                    "Canada":  1157.0,
+                                                                    "HÃ n Quá»c":  30.0,
+                                                                    "Ãc":  0.0
+                                                                },
+                                             "total_cpqc":  {
+                                                                "Nháº­t Báº£n":  10752331.0,
+                                                                "US":  999516948.12,
+                                                                "Canada":  60451898.98,
+                                                                "HÃ n Quá»c":  2471852.0
+                                                            }
+                                         },
+                       "by_team":  {
+                                       "count":  {
+                                                     "HN-MKT":  533
+                                                 },
+                                       "total_mess_cmt":  {
+                                                              "HN-MKT":  15420.0
+                                                          },
+                                       "total_cpqc":  {
+                                                          "HN-MKT":  1073193030.1
+                                                      }
+                                   }
+                   },
+    "filters_applied":  {
+                            "team":  "HN-MKT",
+                            "from_date":  "01/02/2026",
+                            "to_date":  "10/02/2026"
+                        },
+    "total_records_analyzed":  533
+}

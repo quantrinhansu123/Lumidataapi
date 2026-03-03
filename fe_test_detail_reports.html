@@ -1,0 +1,743 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FE Test - Báo cáo chi tiết</title>
+  <style>
+    :root {
+      --green: #2a8a34;
+      --green-light: #4caf50;
+      --yellow: #f4bf00;
+      --bg: #f1f1f1;
+      --card: #ffffff;
+      --line: #d7d7d7;
+      --text: #2f2f2f;
+      --muted: #6b7280;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    .topbar {
+      padding: 18px 14px 10px;
+      border-bottom: 1px solid #cfcfcf;
+      background: #f6f6f6;
+    }
+    .tab {
+      display: inline-block;
+      background: var(--green);
+      color: #fff;
+      padding: 12px 18px;
+      border-radius: 6px 6px 0 0;
+      font-weight: 700;
+      font-size: 30px;
+      line-height: 1;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 290px 1fr;
+      gap: 18px;
+      padding: 18px 14px;
+      min-height: calc(100vh - 78px);
+    }
+
+    .panel {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+    }
+
+    .panel-title {
+      background: var(--green);
+      color: #fff;
+      padding: 12px;
+      border-radius: 4px;
+      font-size: 30px;
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+
+    .group { margin-bottom: 14px; }
+    .label {
+      display: block;
+      font-size: 26px;
+      margin-bottom: 8px;
+      color: #1f2937;
+      font-weight: 600;
+    }
+
+    select,
+    input[type="date"] {
+      width: 100%;
+      border: 1px solid #c7c7c7;
+      border-radius: 4px;
+      padding: 10px 12px;
+      font-size: 24px;
+      background: #fff;
+      color: #374151;
+    }
+
+    .check-card {
+      border: 1px solid #c8d4c8;
+      border-radius: 4px;
+      padding: 8px 8px;
+      background: #fafafa;
+      max-height: 260px;
+      overflow: auto;
+    }
+
+    .check-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 2px;
+      font-size: 24px;
+      color: #374151;
+    }
+
+    .check-row input[type="checkbox"] {
+      transform: scale(1.2);
+      accent-color: #1976d2;
+    }
+
+    .main { min-width: 0; }
+    .main-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+
+    .heading {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 700;
+      color: var(--green);
+      font-size: 50px;
+    }
+
+    .logo {
+      width: 58px;
+      height: 58px;
+      border-radius: 50%;
+      background: var(--green);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 22px;
+    }
+
+    .actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .btn {
+      border: none;
+      background: #4b5563;
+      color: #fff;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 24px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .btn-green { background: var(--green); }
+
+    .btn:hover { opacity: 0.9; }
+
+    .status {
+      font-size: 22px;
+      color: var(--muted);
+      min-height: 28px;
+      margin: 8px 0;
+    }
+
+    .table-wrap {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      background: #fff;
+    }
+
+    .table-title {
+      background: var(--green);
+      color: #fff;
+      padding: 12px;
+      font-weight: 700;
+      font-size: 30px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 1300px;
+    }
+
+    th, td {
+      border: 1px solid #d6d6d6;
+      padding: 10px 8px;
+      text-align: center;
+      font-size: 24px;
+      white-space: nowrap;
+    }
+
+    thead th {
+      background: var(--green-light);
+      color: #fff;
+      font-weight: 700;
+    }
+
+    thead th.yellow { background: var(--yellow); color: #4c3c00; }
+    tbody tr:nth-child(even) td { background: #f9f9f9; }
+
+    .left { text-align: left; }
+    .total-label {
+      background: var(--yellow) !important;
+      color: #3f3000;
+      font-weight: 700;
+      text-align: center;
+    }
+
+    .green-cell {
+      background: var(--green-light) !important;
+      color: #fff;
+      font-weight: 700;
+    }
+
+    .yellow-cell {
+      background: #f1df3a !important;
+      color: #4c3c00;
+    }
+
+    .muted { color: #6b7280; }
+    .scroller { overflow: auto; }
+
+    @media (max-width: 1400px) {
+      .layout { grid-template-columns: 250px 1fr; }
+      .tab, .panel-title, .table-title { font-size: 20px; }
+      .heading { font-size: 34px; }
+      .label, .btn, th, td, select, input[type="date"], .check-row { font-size: 14px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <span class="tab">Báo cáo chi tiết</span>
+  </div>
+
+  <div class="layout">
+    <aside class="panel">
+      <div class="panel-title">Bộ lọc</div>
+
+      <div class="group">
+        <label class="label" for="quickDate">Chọn nhanh:</label>
+        <select id="quickDate">
+          <option value="">-- Chọn nhanh --</option>
+          <option value="today">Hôm nay</option>
+          <option value="last7">7 ngày gần nhất</option>
+          <option value="thisMonth">Tháng này</option>
+        </select>
+      </div>
+
+      <div class="group">
+        <label class="label" for="fromDate">Từ ngày:</label>
+        <input type="date" id="fromDate" />
+      </div>
+
+      <div class="group">
+        <label class="label" for="toDate">Đến ngày:</label>
+        <input type="date" id="toDate" />
+      </div>
+
+      <div class="group">
+        <label class="label" for="dateColumn">Lọc theo ngày:</label>
+        <select id="dateColumn">
+          <option value="order_date" selected>Ngày đơn hàng (order_date)</option>
+          <option value="created_at">Ngày tạo (created_at)</option>
+        </select>
+      </div>
+
+      <div class="group">
+        <label class="label" for="teamSelect">Team:</label>
+        <select id="teamSelect">
+          <option value="" selected>-- Tất cả --</option>
+          <option value="HN-MKT">HN-MKT</option>
+        </select>
+      </div>
+
+      <div class="group">
+        <label class="label" for="marketSelect">Thị trường:</label>
+        <select id="marketSelect">
+          <option value="">-- Tất cả --</option>
+          <option value="US">US</option>
+          <option value="VN">VN</option>
+          <option value="TQ">TQ</option>
+        </select>
+      </div>
+
+      <div class="group">
+        <label class="label" for="marketingStaffSelect">Nhân viên Marketing:</label>
+        <input type="text" id="marketingStaffSelect" placeholder="Tìm nhân viên..." style="width:100%;border:1px solid #c7c7c7;border-radius:4px;padding:10px 12px;font-size:24px;" />
+      </div>
+
+      <div class="group">
+        <div class="panel-title" style="margin-bottom:8px;padding:10px;font-size:26px;">Sản phẩm</div>
+        <div class="check-card" id="productWrap"></div>
+      </div>
+
+      <div class="group">
+        <div class="panel-title" style="margin-bottom:8px;padding:10px;font-size:26px;">Ca</div>
+        <div class="check-card" id="shiftWrap"></div>
+      </div>
+
+      <button class="btn btn-green" id="btnApply" style="width:100%;">Áp dụng bộ lọc</button>
+      <button class="btn" id="btnCopyUrl" style="width:100%; margin-top:8px;">📋 Copy link</button>
+    </aside>
+
+    <main class="main">
+      <div class="main-head">
+        <div class="heading">
+          <div class="logo">MKT</div>
+          DỮ LIỆU CHI PHÍ ADS
+        </div>
+        <div class="actions">
+          <button class="btn">⚙ Cột hiển thị</button>
+        </div>
+      </div>
+
+      <div class="status" id="statusText">Sẵn sàng tải dữ liệu...</div>
+
+      <div class="table-wrap">
+        <div class="table-title">BÁO CÁO TỔNG HỢP</div>
+        <div class="scroller">
+          <table>
+            <thead>
+              <tr>
+                <th>STT</th>
+                <th>Team</th>
+                <th>Marketing</th>
+                <th>Số Mess</th>
+                <th>CPQC</th>
+                <th>Số Đơn</th>
+                <th>Số Đơn TT</th>
+                <th>DS Chốt</th>
+                <th>DS Chốt (TT)</th>
+                <th class="yellow">Tỉ lệ chốt</th>
+                <th class="yellow">Tỉ lệ chốt (TT)</th>
+                <th class="yellow">Giá Mess</th>
+                <th class="yellow">CPS</th>
+                <th class="yellow">%CP/DS</th>
+                <th class="yellow">Giá TB Đơn</th>
+              </tr>
+            </thead>
+            <tbody id="reportBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    const API_BASE_URL = window.API_BASE_URL || "http://127.0.0.1:8000";
+
+    const PRODUCT_OPTIONS = [
+      "Bakuchiol Retinol",
+      "Bonavita Coffee",
+      "Brusko coffe",
+      "Fitgum CAFE 20X",
+      "Gel Xương Khớp",
+      "Kem Body",
+      "Serum Sâm"
+    ];
+
+    const SHIFT_OPTIONS = ["Giữa ca", "Hết ca"];
+
+    const productWrap = document.getElementById("productWrap");
+    const shiftWrap = document.getElementById("shiftWrap");
+    const teamSelect = document.getElementById("teamSelect");
+    const marketSelect = document.getElementById("marketSelect");
+    const marketingStaffSelect = document.getElementById("marketingStaffSelect");
+    const dateColumn = document.getElementById("dateColumn");
+    const quickDate = document.getElementById("quickDate");
+    const fromDate = document.getElementById("fromDate");
+    const toDate = document.getElementById("toDate");
+    const statusText = document.getElementById("statusText");
+    const reportBody = document.getElementById("reportBody");
+
+    function toDateInputValue(dateObj) {
+      const year = dateObj.getFullYear();
+      const month = String(dateObj.getMonth() + 1).padStart(2, "0");
+      const day = String(dateObj.getDate()).padStart(2, "0");
+      return `${year}-${month}-${day}`;
+    }
+
+    function toDdMmYyyy(dateInputValue) {
+      if (!dateInputValue) return "";
+      const [year, month, day] = dateInputValue.split("-");
+      return `${day}/${month}/${year}`;
+    }
+
+    function formatVnd(value) {
+      const num = Number(value || 0);
+      return `${Math.round(num).toLocaleString("vi-VN")} ₫`;
+    }
+
+    function formatNumber(value) {
+      return Number(value || 0).toLocaleString("vi-VN");
+    }
+
+    function formatPercent(value) {
+      const num = Number(value || 0);
+      return `${num.toFixed(2)}%`;
+    }
+
+    function createCheckList(container, values, name) {
+      const allId = `${name}_all`;
+      const rows = [`
+        <label class="check-row">
+          <input type="checkbox" id="${allId}" checked />
+          <span>Tất cả</span>
+        </label>
+      `];
+
+      values.forEach((value, index) => {
+        rows.push(`
+          <label class="check-row">
+            <input type="checkbox" class="${name}-item" data-value="${value}" id="${name}_${index}" checked />
+            <span>${value}</span>
+          </label>
+        `);
+      });
+
+      container.innerHTML = rows.join("");
+
+      const allCheckbox = document.getElementById(allId);
+      const itemCheckboxes = Array.from(container.querySelectorAll(`.${name}-item`));
+
+      allCheckbox.addEventListener("change", () => {
+        itemCheckboxes.forEach((item) => item.checked = allCheckbox.checked);
+      });
+
+      itemCheckboxes.forEach((item) => {
+        item.addEventListener("change", () => {
+          const checkedCount = itemCheckboxes.filter((x) => x.checked).length;
+          allCheckbox.checked = checkedCount === itemCheckboxes.length;
+        });
+      });
+    }
+
+    function getCheckedValues(container, className) {
+      return Array.from(container.querySelectorAll(`.${className}`))
+        .filter((el) => el.checked)
+        .map((el) => el.dataset.value);
+    }
+
+    function applyQuickDate(type) {
+      if (!type) return;
+      const now = new Date();
+      const start = new Date(now);
+      const end = new Date(now);
+
+      if (type === "today") {
+      } else if (type === "last7") {
+        start.setDate(now.getDate() - 6);
+      } else if (type === "thisMonth") {
+        start.setDate(1);
+      }
+
+      fromDate.value = toDateInputValue(start);
+      toDate.value = toDateInputValue(end);
+    }
+
+    quickDate.addEventListener("change", () => applyQuickDate(quickDate.value));
+
+    function setStatus(message, isError = false) {
+      statusText.textContent = message;
+      statusText.style.color = isError ? "#b91c1c" : "#6b7280";
+    }
+
+    function safeValue(mapObj, key) {
+      return mapObj && Object.prototype.hasOwnProperty.call(mapObj, key) ? mapObj[key] : 0;
+    }
+
+    function buildRowData(statistics, teamName = "HN-MKT") {
+      const byTen = statistics.by_ten || {};
+      const names = Object.keys(byTen.total_mess_cmt || {});
+
+      const rows = names.map((name) => {
+        const soMess = Number(safeValue(byTen.total_mess_cmt, name));
+        const cpqc = Number(safeValue(byTen.total_cpqc, name));
+        const soDon = Number(safeValue(byTen.total_sodon, name));
+        const soDonTT = soDon;
+        const dsChot = Number(safeValue(byTen.total_vnd, name));
+        const dsChotTT = dsChot;
+
+        const tiLeChot = soMess > 0 ? (soDon / soMess) * 100 : 0;
+        const tiLeChotTT = soMess > 0 ? (soDonTT / soMess) * 100 : 0;
+        const giaMess = Number(safeValue(byTen.gia_mess, name));
+        const cps = soDon > 0 ? cpqc / soDon : 0;
+        const cpds = dsChot > 0 ? (cpqc / dsChot) * 100 : 0;
+        const giaTbDon = soDon > 0 ? dsChot / soDon : 0;
+
+        return {
+          team: teamName,
+          marketing: name,
+          soMess,
+          cpqc,
+          soDon,
+          soDonTT,
+          dsChot,
+          dsChotTT,
+          tiLeChot,
+          tiLeChotTT,
+          giaMess,
+          cps,
+          cpds,
+          giaTbDon
+        };
+      });
+
+      rows.sort((a, b) => b.dsChot - a.dsChot);
+      return rows;
+    }
+
+    function renderReport(rows) {
+      if (!rows.length) {
+        reportBody.innerHTML = `<tr><td colspan="15" class="muted">Không có dữ liệu với bộ lọc hiện tại</td></tr>`;
+        return;
+      }
+
+      const totals = rows.reduce((acc, row) => {
+        acc.soMess += row.soMess;
+        acc.cpqc += row.cpqc;
+        acc.soDon += row.soDon;
+        acc.soDonTT += row.soDonTT;
+        acc.dsChot += row.dsChot;
+        acc.dsChotTT += row.dsChotTT;
+        return acc;
+      }, { soMess: 0, cpqc: 0, soDon: 0, soDonTT: 0, dsChot: 0, dsChotTT: 0 });
+
+      const totalTiLeChot = totals.soMess > 0 ? (totals.soDon / totals.soMess) * 100 : 0;
+      const totalTiLeChotTT = totals.soMess > 0 ? (totals.soDonTT / totals.soMess) * 100 : 0;
+      const totalGiaMess = totals.soMess > 0 ? totals.cpqc / totals.soMess : 0;
+      const totalCps = totals.soDon > 0 ? totals.cpqc / totals.soDon : 0;
+      const totalCpds = totals.dsChot > 0 ? (totals.cpqc / totals.dsChot) * 100 : 0;
+      const totalGiaTbDon = totals.soDon > 0 ? totals.dsChot / totals.soDon : 0;
+
+      const totalRow = `
+        <tr>
+          <td></td>
+          <td colspan="2" class="total-label">TỔNG CỘNG</td>
+          <td><b>${formatNumber(totals.soMess)}</b></td>
+          <td><b>${formatVnd(totals.cpqc)}</b></td>
+          <td><b>${formatNumber(totals.soDon)}</b></td>
+          <td><b>${formatNumber(totals.soDonTT)}</b></td>
+          <td><b>${formatVnd(totals.dsChot)}</b></td>
+          <td><b>${formatVnd(totals.dsChotTT)}</b></td>
+          <td><b>${formatPercent(totalTiLeChot)}</b></td>
+          <td class="green-cell"><b>${formatPercent(totalTiLeChotTT)}</b></td>
+          <td><b>${formatVnd(totalGiaMess)}</b></td>
+          <td><b>${formatVnd(totalCps)}</b></td>
+          <td><b>${formatPercent(totalCpds)}</b></td>
+          <td><b>${formatVnd(totalGiaTbDon)}</b></td>
+        </tr>
+      `;
+
+      const bodyRows = rows.map((row, index) => {
+        const cpdsClass = row.cpds > 40 ? "yellow-cell" : "";
+        return `
+          <tr>
+            <td>${index + 1}</td>
+            <td>${row.team}</td>
+            <td class="left">${row.marketing}</td>
+            <td>${formatNumber(row.soMess)}</td>
+            <td>${formatVnd(row.cpqc)}</td>
+            <td>${formatNumber(row.soDon)}</td>
+            <td style="background:#edf5ed;">${formatNumber(row.soDonTT)}</td>
+            <td>${formatVnd(row.dsChot)}</td>
+            <td>${formatVnd(row.dsChotTT)}</td>
+            <td class="yellow-cell">${formatPercent(row.tiLeChot)}</td>
+            <td class="green-cell">${formatPercent(row.tiLeChotTT)}</td>
+            <td>${formatVnd(row.giaMess)}</td>
+            <td>${formatVnd(row.cps)}</td>
+            <td class="${cpdsClass}">${formatPercent(row.cpds)}</td>
+            <td>${formatVnd(row.giaTbDon)}</td>
+          </tr>
+        `;
+      }).join("");
+
+      reportBody.innerHTML = totalRow + bodyRows;
+    }
+
+    async function loadData() {
+      const selectedProducts = getCheckedValues(productWrap, "product-item");
+      const selectedShifts = getCheckedValues(shiftWrap, "shift-item");
+      const selectedTeam = teamSelect.value;
+      const selectedMarket = marketSelect.value;
+      const selectedMarketingStaff = marketingStaffSelect.value.trim();
+      const selectedDateColumn = dateColumn.value || "order_date";
+
+      const fromDateStr = toDdMmYyyy(fromDate.value);
+      const toDateStr = toDdMmYyyy(toDate.value);
+
+      const params = new URLSearchParams();
+
+      if (selectedTeam) params.set("team", selectedTeam);
+      if (selectedMarket) params.set("thi_truong", selectedMarket);
+      if (selectedMarketingStaff) params.set("marketing_staff", selectedMarketingStaff);
+      if (selectedProducts.length && selectedProducts.length < PRODUCT_OPTIONS.length) {
+        selectedProducts.forEach(p => params.append("san_pham", p));
+      }
+      if (selectedShifts.length && selectedShifts.length < SHIFT_OPTIONS.length) {
+        selectedShifts.forEach(s => params.append("ca", s));
+      }
+      if (fromDateStr) params.set("from_date", fromDateStr);
+      if (toDateStr) params.set("to_date", toDateStr);
+      params.set("date_column", selectedDateColumn);
+
+      setStatus("Đang tải dữ liệu...");
+
+      try {
+        const statsUrl = `${API_BASE_URL}/detail_reports/statistics?${params.toString()}`;
+        const statsResponse = await fetch(statsUrl);
+
+        if (!statsResponse.ok) {
+          const failText = await statsResponse.text();
+          throw new Error(failText || `HTTP ${statsResponse.status}`);
+        }
+
+        const result = await statsResponse.json();
+        console.log("API Response:", result);
+        const statistics = result.statistics || {};
+        const teamName = (result.filters_applied && result.filters_applied.team) || "HN-MKT";
+        const rows = buildRowData(statistics, teamName);
+        renderReport(rows);
+
+        const totalRecords = result.total_records_analyzed || 0;
+        const totalOrders = statistics.total_count || 0;
+        setStatus(`Tải xong: ${rows.length} nhân sự, ${totalRecords} records detail_reports, ${totalOrders} đơn hàng | API: ${API_BASE_URL}`);
+      } catch (error) {
+        console.error(error);
+        reportBody.innerHTML = `<tr><td colspan="15" class="muted">Lỗi tải dữ liệu</td></tr>`;
+        const hint = "Kiểm tra API local đang chạy tại http://127.0.0.1:8000 và mở trang qua http server (không mở file trực tiếp).";
+        setStatus(`Lỗi: ${error.message}. ${hint}`, true);
+      }
+    }
+
+    document.getElementById("btnApply").addEventListener("click", loadData);
+
+    // T\u1ea1o URL v\u1edbi b\u1ed9 l\u1ecdc hi\u1ec7n t\u1ea1i
+    function buildFilterUrl() {
+      const baseUrl = window.location.pathname;
+      const params = new URLSearchParams();
+
+      const selectedTeam = teamSelect.value;
+      const selectedMarket = marketSelect.value;
+      const selectedMarketingStaff = marketingStaffSelect.value.trim();
+      const selectedProducts = getCheckedValues(productWrap, "product-item");
+      const selectedShifts = getCheckedValues(shiftWrap, "shift-item");
+
+      if (selectedTeam) params.set("team", selectedTeam);
+      if (selectedMarket) params.set("thi_truong", selectedMarket);
+      if (selectedMarketingStaff) params.set("marketing_staff", selectedMarketingStaff);
+      if (selectedProducts.length && selectedProducts.length < PRODUCT_OPTIONS.length) {
+        selectedProducts.forEach(p => params.append("san_pham", p));
+      }
+      if (selectedShifts.length && selectedShifts.length < SHIFT_OPTIONS.length) {
+        selectedShifts.forEach(s => params.append("ca", s));
+      }
+
+      const fromDateStr = toDdMmYyyy(fromDate.value);
+      const toDateStr = toDdMmYyyy(toDate.value);
+      if (fromDateStr) params.set("from_date", fromDateStr);
+      if (toDateStr) params.set("to_date", toDateStr);
+      params.set("date_column", dateColumn.value);
+
+      return `${window.location.origin}${baseUrl}?${params.toString()}`;
+    }
+
+    // Copy URL v\u00e0o clipboard
+    document.getElementById("btnCopyUrl").addEventListener("click", () => {
+      const url = buildFilterUrl();
+      navigator.clipboard.writeText(url).then(() => {
+        alert("\xd0\u00e3 copy link:\\n" + url);
+      }).catch(() => {
+        prompt("Copy link n\u00e0y:", url);
+      });
+    });
+
+    // Parse URL params v\u00e0 populate v\u00e0o form
+    function loadFiltersFromUrl() {
+      const params = new URLSearchParams(window.location.search);
+      let hasParams = false;
+
+      if (params.has("team")) {
+        teamSelect.value = params.get("team");
+        hasParams = true;
+      }
+      if (params.has("thi_truong")) {
+        marketSelect.value = params.get("thi_truong");
+        hasParams = true;
+      }
+      if (params.has("marketing_staff")) {
+        marketingStaffSelect.value = params.get("marketing_staff");
+        hasParams = true;
+      }
+      if (params.has("date_column")) {
+        dateColumn.value = params.get("date_column");
+      }
+      if (params.has("from_date")) {
+        const ddMmYyyy = params.get("from_date");
+        const [d, m, y] = ddMmYyyy.split("/");
+        fromDate.value = `${y}-${m}-${d}`;
+        hasParams = true;
+      }
+      if (params.has("to_date")) {
+        const ddMmYyyy = params.get("to_date");
+        const [d, m, y] = ddMmYyyy.split("/");
+        toDate.value = `${y}-${m}-${d}`;
+        hasParams = true;
+      }
+
+      // Check products from URL params
+      const urlProducts = params.getAll("san_pham");
+      if (urlProducts.length > 0) {
+        hasParams = true;
+      }
+
+      // Check shifts from URL params
+      const urlShifts = params.getAll("ca");
+      if (urlShifts.length > 0) {
+        hasParams = true;
+      }
+
+      return hasParams;
+    }
+
+    createCheckList(productWrap, PRODUCT_OPTIONS, "product");
+    createCheckList(shiftWrap, SHIFT_OPTIONS, "shift");
+
+    const defaultTo = new Date();
+    const defaultFrom = new Date();
+    defaultFrom.setDate(defaultTo.getDate() - 30);
+    fromDate.value = toDateInputValue(defaultFrom);
+    toDate.value = toDateInputValue(defaultTo);
+
+    loadData();
+  </script>
+</body>
+</html>

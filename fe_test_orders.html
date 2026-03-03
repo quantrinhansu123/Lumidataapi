@@ -1,0 +1,566 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FE Test - Bảng Orders</title>
+  <style>
+    :root {
+      --green: #2a8a34;
+      --green-light: #4caf50;
+      --yellow: #f4bf00;
+      --bg: #f1f1f1;
+      --card: #ffffff;
+      --line: #d7d7d7;
+      --text: #2f2f2f;
+      --muted: #6b7280;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    .topbar {
+      padding: 18px 14px 10px;
+      border-bottom: 1px solid #cfcfcf;
+      background: #f6f6f6;
+    }
+    .tab {
+      display: inline-block;
+      background: var(--green);
+      color: #fff;
+      padding: 12px 18px;
+      border-radius: 6px 6px 0 0;
+      font-weight: 700;
+      font-size: 30px;
+      line-height: 1;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 290px 1fr;
+      gap: 18px;
+      padding: 18px 14px;
+      min-height: calc(100vh - 78px);
+    }
+
+    .panel {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+    }
+
+    .panel-title {
+      background: var(--green);
+      color: #fff;
+      padding: 12px;
+      border-radius: 4px;
+      font-size: 30px;
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+
+    .group { margin-bottom: 14px; }
+    .label {
+      display: block;
+      font-size: 26px;
+      margin-bottom: 8px;
+      color: #1f2937;
+      font-weight: 600;
+    }
+
+    select,
+    input[type="date"] {
+      width: 100%;
+      border: 1px solid #c7c7c7;
+      border-radius: 4px;
+      padding: 10px 12px;
+      font-size: 24px;
+      background: #fff;
+      color: #374151;
+    }
+
+    .check-card {
+      border: 1px solid #c8d4c8;
+      border-radius: 4px;
+      padding: 8px 8px;
+      background: #fafafa;
+      max-height: 260px;
+      overflow: auto;
+    }
+
+    .check-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 2px;
+      font-size: 24px;
+      color: #374151;
+    }
+
+    .check-row input[type="checkbox"] {
+      transform: scale(1.2);
+      accent-color: #1976d2;
+    }
+
+    .main { min-width: 0; }
+    .main-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+
+    .heading {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 700;
+      color: var(--green);
+      font-size: 50px;
+    }
+
+    .logo {
+      width: 58px;
+      height: 58px;
+      border-radius: 50%;
+      background: var(--green);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 22px;
+    }
+
+    .actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .btn {
+      border: none;
+      background: #4b5563;
+      color: #fff;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 24px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .btn-green { background: var(--green); }
+
+    .btn:hover { opacity: 0.9; }
+
+    .status {
+      font-size: 22px;
+      color: var(--muted);
+      min-height: 28px;
+      margin: 8px 0;
+    }
+
+    .table-wrap {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      background: #fff;
+    }
+
+    .table-title {
+      background: var(--green);
+      color: #fff;
+      padding: 12px;
+      font-weight: 700;
+      font-size: 30px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 1400px;
+    }
+
+    th, td {
+      border: 1px solid #d6d6d6;
+      padding: 10px 8px;
+      text-align: center;
+      font-size: 22px;
+      white-space: nowrap;
+    }
+
+    thead th {
+      background: var(--green-light);
+      color: #fff;
+      font-weight: 700;
+    }
+
+    tbody tr:nth-child(even) td { background: #f9f9f9; }
+
+    .left { text-align: left; }
+    .green-cell { background: var(--green-light) !important; color: #fff; font-weight: 700; }
+    .yellow-cell { background: #f1df3a !important; color: #4c3c00; }
+    .red-cell { background: #fee2e2 !important; color: #991b1b; }
+
+    .muted { color: #6b7280; }
+    .scroller { overflow: auto; }
+
+    @media (max-width: 1400px) {
+      .layout { grid-template-columns: 250px 1fr; }
+      .tab, .panel-title, .table-title { font-size: 20px; }
+      .heading { font-size: 34px; }
+      .label, .btn, th, td, select, input[type="date"], .check-row { font-size: 14px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <span class="tab">Bảng Orders</span>
+  </div>
+
+  <div class="layout">
+    <aside class="panel">
+      <div class="panel-title">Bộ lọc</div>
+
+      <div class="group">
+        <label class="label" for="quickDate">Chọn nhanh:</label>
+        <select id="quickDate">
+          <option value="">-- Chọn nhanh --</option>
+          <option value="today">Hôm nay</option>
+          <option value="last7">7 ngày gần nhất</option>
+          <option value="thisMonth">Tháng này</option>
+        </select>
+      </div>
+
+      <div class="group">
+        <label class="label" for="dateColumn">Lọc theo ngày:</label>
+        <select id="dateColumn">
+          <option value="order_date" selected>Ngày đơn hàng (order_date)</option>
+          <option value="created_at">Ngày tạo (created_at)</option>
+        </select>
+      </div>
+
+      <div class="group">
+        <label class="label" for="fromDate">Từ ngày:</label>
+        <input type="date" id="fromDate" />
+      </div>
+
+      <div class="group">
+        <label class="label" for="toDate">Đến ngày:</label>
+        <input type="date" id="toDate" />
+      </div>
+
+      <div class="group">
+        <label class="label" for="teamSelect">Team:</label>
+        <select id="teamSelect">
+          <option value="" selected>-- Tất cả --</option>
+          <option value="HN-MKT">HN-MKT</option>
+        </select>
+      </div>
+
+      <div class="group">
+        <label class="label" for="countrySelect">Quốc gia:</label>
+        <select id="countrySelect">
+          <option value="" selected>-- Tất cả --</option>
+          <option value="US">US</option>
+          <option value="VN">VN</option>
+          <option value="TQ">TQ</option>
+        </select>
+      </div>
+
+      <div class="group">
+        <label class="label" for="deliverySelect">Trạng thái giao:</label>
+        <select id="deliverySelect">
+          <option value="" selected>-- Tất cả --</option>
+          <option value="Pending">Pending</option>
+          <option value="Delivered">Delivered</option>
+          <option value="Cancelled">Cancelled</option>
+        </select>
+      </div>
+
+      <div class="group">
+        <label class="label" for="marketingStaffSelect">Nhân viên Marketing:</label>
+        <input type="text" id="marketingStaffSelect" placeholder="Tìm nhân viên..." style="width:100%;border:1px solid #c7c7c7;border-radius:4px;padding:10px 12px;font-size:24px;" />
+      </div>
+
+      <button class="btn btn-green" id="btnApply" style="width:100%;">Áp dụng bộ lọc</button>
+      <button class="btn" id="btnCopyUrl" style="width:100%; margin-top:8px;">📋 Copy link</button>
+    </aside>
+
+    <main class="main">
+      <div class="main-head">
+        <div class="heading">
+          <div class="logo">ODS</div>
+          BẢNG ĐƠN HÀNG
+        </div>
+        <div class="actions">
+          <button class="btn">⚙ Cột hiển thị</button>
+        </div>
+      </div>
+
+      <div class="status" id="statusText">Sẵn sàng tải dữ liệu...</div>
+
+      <div class="table-wrap">
+        <div class="table-title">DANH SÁCH ĐƠN HÀNG</div>
+        <div class="scroller">
+          <table>
+            <thead>
+              <tr>
+                <th>STT</th>
+                <th>Ngày đơn</th>
+                <th>Mã đơn</th>
+                <th>Khách hàng</th>
+                <th>Team</th>
+                <th>Nhân viên</th>
+                <th>Sản phẩm</th>
+                <th>Số tiền (VND)</th>
+                <th>Trạng thái giao</th>
+                <th>Trạng thái thanh toán</th>
+                <th>Quốc gia</th>
+                <th>Ngày tạo</th>
+              </tr>
+            </thead>
+            <tbody id="ordersBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    const API_BASE_URL = window.API_BASE_URL || "http://127.0.0.1:8000";
+
+    const dateColumn = document.getElementById("dateColumn");
+    const teamSelect = document.getElementById("teamSelect");
+    const countrySelect = document.getElementById("countrySelect");
+    const deliverySelect = document.getElementById("deliverySelect");
+    const marketingStaffSelect = document.getElementById("marketingStaffSelect");
+    const quickDate = document.getElementById("quickDate");
+    const fromDate = document.getElementById("fromDate");
+    const toDate = document.getElementById("toDate");
+    const statusText = document.getElementById("statusText");
+    const ordersBody = document.getElementById("ordersBody");
+
+    function toDateInputValue(dateObj) {
+      const year = dateObj.getFullYear();
+      const month = String(dateObj.getMonth() + 1).padStart(2, "0");
+      const day = String(dateObj.getDate()).padStart(2, "0");
+      return `${year}-${month}-${day}`;
+    }
+
+    function toDdMmYyyy(dateInputValue) {
+      if (!dateInputValue) return "";
+      const [year, month, day] = dateInputValue.split("-");
+      return `${day}/${month}/${year}`;
+    }
+
+    function formatVnd(value) {
+      const num = Number(value || 0);
+      return `${Math.round(num).toLocaleString("vi-VN")} ₫`;
+    }
+
+    function formatDate(dateStr) {
+      if (!dateStr) return "";
+      if (dateStr.includes("/")) return dateStr;
+      const [year, month, day] = dateStr.split("-");
+      return `${day}/${month}/${year}`;
+    }
+
+    function setStatus(message, isError = false) {
+      statusText.textContent = message;
+      statusText.style.color = isError ? "#b91c1c" : "#6b7280";
+    }
+
+    function applyQuickDate(type) {
+      if (!type) return;
+      const now = new Date();
+      const start = new Date(now);
+      const end = new Date(now);
+
+      if (type === "today") {
+      } else if (type === "last7") {
+        start.setDate(now.getDate() - 6);
+      } else if (type === "thisMonth") {
+        start.setDate(1);
+      }
+
+      fromDate.value = toDateInputValue(start);
+      toDate.value = toDateInputValue(end);
+    }
+
+    quickDate.addEventListener("change", () => applyQuickDate(quickDate.value));
+
+    function renderOrders(orders) {
+      if (!orders || !orders.length) {
+        ordersBody.innerHTML = `<tr><td colspan="12" class="muted">Không có dữ liệu với bộ lọc hiện tại</td></tr>`;
+        return;
+      }
+
+      const rows = orders.map((order, index) => {
+        const orderDate = formatDate(order.order_date || "");
+        const createdAt = formatDate(order.ngaytao || "");
+        const totalVnd = Number(order.tongtien || 0);
+        const deliveryStatus = order.delivery_status || "-";
+        const paymentStatus = order.payment_status || "-";
+        
+        let deliveryClass = "";
+        if (deliveryStatus === "Delivered") deliveryClass = "green-cell";
+        else if (deliveryStatus === "Pending") deliveryClass = "yellow-cell";
+        else if (deliveryStatus === "Cancelled") deliveryClass = "red-cell";
+
+        return `
+          <tr>
+            <td>${index + 1}</td>
+            <td>${orderDate}</td>
+            <td class="left">${order.id || "-"}</td>
+            <td class="left">${order.customer_name || "-"}</td>
+            <td>${order.team || "-"}</td>
+            <td class="left">${order.nhanvien_maketing || "-"}</td>
+            <td class="left">${order.product || "-"}</td>
+            <td>${formatVnd(totalVnd)}</td>
+            <td class="${deliveryClass}">${deliveryStatus}</td>
+            <td>${paymentStatus}</td>
+            <td>${order.country || "-"}</td>
+            <td>${createdAt}</td>
+          </tr>
+        `;
+      }).join("");
+
+      ordersBody.innerHTML = rows;
+    }
+
+    async function loadData() {
+      const selectedTeam = teamSelect.value;
+      const selectedCountry = countrySelect.value;
+      const selectedDelivery = deliverySelect.value;
+      const selectedStaff = marketingStaffSelect.value;
+      const selectedDateCol = dateColumn.value || "order_date";
+
+      const fromDateStr = toDdMmYyyy(fromDate.value);
+      const toDateStr = toDdMmYyyy(toDate.value);
+
+      setStatus("Đang tải dữ liệu...");
+
+      const params = new URLSearchParams();
+      
+      if (selectedTeam) params.set("team", selectedTeam);
+      if (selectedCountry) params.set("country", selectedCountry);
+      if (selectedDelivery) params.set("delivery_status", selectedDelivery);
+      if (selectedStaff) params.set("marketing_staff", selectedStaff);
+      if (fromDateStr) params.set(selectedDateCol, fromDateStr);
+      if (toDateStr) params.set(selectedDateCol, toDateStr);
+      params.set("limit", "1000");
+
+      try {
+        const ordersUrl = `${API_BASE_URL}/orders?${params.toString()}`;
+        console.log("Orders URL:", ordersUrl);
+        
+        const response = await fetch(ordersUrl);
+        if (!response.ok) {
+          const failText = await response.text();
+          throw new Error(failText || `HTTP ${response.status}`);
+        }
+
+        const result = await response.json();
+        console.log("Orders Response:", result);
+        
+        const orders = result.data || [];
+        renderOrders(orders);
+
+        setStatus(`Tải xong: ${orders.length} đơn hàng | API: ${API_BASE_URL}`);
+      } catch (error) {
+        console.error(error);
+        ordersBody.innerHTML = `<tr><td colspan="12" class="muted">Lỗi tải dữ liệu</td></tr>`;
+        const hint = "Kiểm tra API local đang chạy tại http://127.0.0.1:8000.";
+        setStatus(`Lỗi: ${error.message}. ${hint}`, true);
+      }
+    }
+
+    document.getElementById("btnApply").addEventListener("click", loadData);
+
+    // Tạo URL với bộ lọc hiện tại
+    function buildFilterUrl() {
+      const baseUrl = window.location.pathname;
+      const params = new URLSearchParams();
+
+      if (teamSelect.value) params.set("team", teamSelect.value);
+      if (countrySelect.value) params.set("country", countrySelect.value);
+      if (deliverySelect.value) params.set("delivery_status", deliverySelect.value);
+      if (marketingStaffSelect.value) params.set("marketing_staff", marketingStaffSelect.value);
+      params.set("date_column", dateColumn.value);
+
+      const fromDateStr = toDdMmYyyy(fromDate.value);
+      const toDateStr = toDdMmYyyy(toDate.value);
+      if (fromDateStr) params.set("from_date", fromDateStr);
+      if (toDateStr) params.set("to_date", toDateStr);
+
+      return `${window.location.origin}${baseUrl}?${params.toString()}`;
+    }
+
+    // Copy URL vào clipboard
+    document.getElementById("btnCopyUrl").addEventListener("click", () => {
+      const url = buildFilterUrl();
+      navigator.clipboard.writeText(url).then(() => {
+        alert("Đã copy link:\n" + url);
+      }).catch(() => {
+        prompt("Copy link này:", url);
+      });
+    });
+
+    // Parse URL params và populate vào form
+    function loadFiltersFromUrl() {
+      const params = new URLSearchParams(window.location.search);
+      let hasParams = false;
+
+      if (params.has("team")) {
+        teamSelect.value = params.get("team");
+        hasParams = true;
+      }
+      if (params.has("country")) {
+        countrySelect.value = params.get("country");
+        hasParams = true;
+      }
+      if (params.has("delivery_status")) {
+        deliverySelect.value = params.get("delivery_status");
+        hasParams = true;
+      }
+      if (params.has("marketing_staff")) {
+        marketingStaffSelect.value = params.get("marketing_staff");
+        hasParams = true;
+      }
+      if (params.has("date_column")) {
+        dateColumn.value = params.get("date_column");
+      }
+      if (params.has("from_date")) {
+        const ddMmYyyy = params.get("from_date");
+        const [d, m, y] = ddMmYyyy.split("/");
+        fromDate.value = `${y}-${m}-${d}`;
+        hasParams = true;
+      }
+      if (params.has("to_date")) {
+        const ddMmYyyy = params.get("to_date");
+        const [d, m, y] = ddMmYyyy.split("/");
+        toDate.value = `${y}-${m}-${d}`;
+        hasParams = true;
+      }
+
+      return hasParams;
+    }
+
+    const defaultTo = new Date();
+    const defaultFrom = new Date();
+    defaultFrom.setDate(defaultTo.getDate() - 30);
+    fromDate.value = toDateInputValue(defaultFrom);
+    toDate.value = toDateInputValue(defaultTo);
+
+    const hasUrlParams = loadFiltersFromUrl();
+    loadData();
+  </script>
+</body>
+</html>
