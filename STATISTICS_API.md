@@ -80,6 +80,16 @@ Content-Type: application/json
       "count": {},
       "revenue": {}
     },
+    "by_date": {
+      "2026-03-01": {
+        "count": 80,
+        "total_vnd": 40000000.0
+      },
+      "2026-03-02": {
+        "count": 70,
+        "total_vnd": 35000000.0
+      }
+    },
     "by_sale_staff": {
       "count": {},
       "revenue": {}
@@ -209,6 +219,8 @@ curl "http://127.0.0.1:8000/orders/statistics?created_at=01/03/2026&delivery_sta
    - `by_team`: Count và revenue
    - `by_country`: Count và revenue
    - `by_marketing_staff`: Count và revenue
+  - `by_marketing_staff`: Count và revenue
+  - `by_date`: Count và total_vnd theo từng ngày (từ `created_at`)
    - `by_sale_staff`: Count và revenue
    - `by_product`: Count và revenue
    - `by_shift`: Count và revenue

@@ -72,9 +72,11 @@ Content-Type: application/json
 ```json
 {
   "statistics": {
-    "total_records": 100,
+    "total_count": 186,
+    "total_cpqc": 2500.0,
     "total_mess_cmt": 5000.0,
     "average_mess_cmt": 50.0,
+    "gia_mess": 0.5,
     "by_ten": {
       "count": {
         "Nguyễn Văn A": 30,
@@ -87,47 +89,56 @@ Content-Type: application/json
       "total_cpqc": {
         "Nguyễn Văn A": 800.0,
         "Trần Thị B": 650.0
+      },
+      "gia_mess": {
+        "Nguyễn Văn A": 0.533333,
+        "Trần Thị B": 0.52
+      },
+      "total_vnd": {
+        "Nguyễn Văn A": 12000000.0,
+        "Trần Thị B": 10000000.0
+      },
+      "total_sodon": {
+        "Nguyễn Văn A": 45,
+        "Trần Thị B": 38
       }
     },
-    "by_ca": {
-      "count": {
-        "Sáng": 50,
-        "Chiều": 30,
-        "Tối": 20
+    "by_ngay": {
+      "2026-02-01": {
+        "count": 35,
+        "total_mess_cmt": 1750.0,
+        "total_cpqc": 900.0,
+        "gia_mess": 0.514286,
+        "by_ten": {
+          "count": {
+            "Nguyễn Văn A": 12,
+            "Trần Thị B": 10
+          },
+          "total_mess_cmt": {
+            "Nguyễn Văn A": 620.0,
+            "Trần Thị B": 500.0
+          },
+          "total_cpqc": {
+            "Nguyễn Văn A": 320.0,
+            "Trần Thị B": 260.0
+          },
+          "gia_mess": {
+            "Nguyễn Văn A": 0.516129,
+            "Trần Thị B": 0.52
+          }
+        }
       },
-      "total_mess_cmt": {
-        "Sáng": 2500.0,
-        "Chiều": 1500.0,
-        "Tối": 1000.0
-      },
-      "total_cpqc": {
-        "Sáng": 1300.0,
-        "Chiều": 900.0,
-        "Tối": 600.0
-      }
-    },
-    "by_san_pham": {
-      "count": {},
-      "total_mess_cmt": {},
-      "total_cpqc": {}
-    },
-    "by_thi_truong": {
-      "count": {},
-      "total_mess_cmt": {},
-      "total_cpqc": {}
-    },
-    "by_team": {
-      "count": {
-        "Team A": 60,
-        "Team B": 40
-      },
-      "total_mess_cmt": {
-        "Team A": 3000.0,
-        "Team B": 2000.0
-      },
-      "total_cpqc": {
-        "Team A": 1600.0,
-        "Team B": 1200.0
+      "2026-02-02": {
+        "count": 40,
+        "total_mess_cmt": 2000.0,
+        "total_cpqc": 1000.0,
+        "gia_mess": 0.5,
+        "by_ten": {
+          "count": {},
+          "total_mess_cmt": {},
+          "total_cpqc": {},
+          "gia_mess": {}
+        }
       }
     }
   },
@@ -308,11 +319,8 @@ $json.statistics.by_team.count.PSObject.Properties | ForEach-Object {
    - `average_mess_cmt`: Trung bình message/comment mỗi bản ghi
 
 2. **Thống kê theo nhóm:**
-  - `by_ten`: Count, total_mess_cmt và total_cpqc theo tên nhân viên
-  - `by_ca`: Count, total_mess_cmt và total_cpqc theo ca làm việc
-  - `by_san_pham`: Count, total_mess_cmt và total_cpqc theo sản phẩm
-  - `by_thi_truong`: Count, total_mess_cmt và total_cpqc theo thị trường
-  - `by_team`: Count, total_mess_cmt và total_cpqc theo team
+  - `by_ten`: Count, total_mess_cmt, total_cpqc, gia_mess, total_vnd và total_sodon theo tên nhân viên
+  - `by_ngay`: Mỗi ngày gồm count, total_mess_cmt, total_cpqc, gia_mess và breakdown con `by_ten`
 
 ## Lưu ý
 

@@ -132,7 +132,7 @@ DETAIL_REPORTS_RESPONSE_LABELS = {
 }
 
 DETAIL_REPORTS_CANONICAL_COLUMNS = {
-    "ten", "ngay", "ca", "san_pham", "thi_truong", "team", "cpqc", "so_mess_cmt"
+    "ten", "ngay", "ca", "san_pham", "thi_truong", "cpqc", "so_mess_cmt"
 }
 
 
@@ -246,16 +246,19 @@ def apply_detail_reports_filters_in_memory(
                     if normalize_date_value(row.get("ngay")) in allowed_dates
                 ]
             else:
-                allowed_values = {
+                # Build allowed values with case-insensitive lookup
+                allowed_values = [
                     str(item).strip()
                     for item in val
                     if str(item).strip()
-                }
+                ]
                 if not allowed_values:
                     continue
+                # Create a dict for case-insensitive lookup: {"value_lower": "original_value", ...}
+                allowed_values_lower = {v.lower(): v for v in allowed_values}
                 filtered = [
                     row for row in filtered
-                    if str(row.get(col) or "").strip() in allowed_values
+                    if str(row.get(col) or "").strip().lower() in allowed_values_lower
                 ]
         elif col == "ngay":
             date_str = parse_date_only(str(val))
@@ -265,10 +268,10 @@ def apply_detail_reports_filters_in_memory(
                     if normalize_date_value(row.get("ngay")) == date_str
                 ]
         else:
-            target = str(val).strip()
+            target = str(val).strip().lower()
             filtered = [
                 row for row in filtered
-                if str(row.get(col) or "").strip() == target
+                if str(row.get(col) or "").strip().lower() == target
             ]
 
     if date_range:
@@ -335,6 +338,70 @@ def apply_filters_to_query(query, filters: dict):
             query = query.eq(col, str(val).strip())
     
     return query
+
+
+def calculate_orders_statistics_detail(orders: list) -> dict:
+    """
+    Tính toán thống kê từ danh sách orders.
+    - total_records: số lượng đơn hàng
+    - total_revenue_vnd: Tổng tiền VNĐ (sum total_vnd)
+    - average_vnd: Trung bình tiền/đơn
+    - by_marketing_staff: Tổng tiền theo nhân viên marketing
+    """
+    if not orders:
+        return {
+            "total_records": 0,
+            "total_revenue_vnd": 0,
+            "average_vnd": 0,
+            "by_marketing_staff": {},
+            "by_date": {}
+        }
+    
+    total_records = len(orders)
+    
+    # Tính tổng và trung bình tiền
+    total_revenue_vnd = sum(float(row.get("total_vnd") or 0) for row in orders)
+    average_vnd = total_revenue_vnd / total_records if total_records > 0 else 0
+    
+    # Tính by_marketing_staff: count + total_vnd
+    by_marketing_staff = {}
+    by_date = {}
+    for row in orders:
+        staff = row.get("marketing_staff") or "Unknown"
+        total_vnd = float(row.get("total_vnd") or 0)
+        created_at = row.get("created_at")
+        day_key = normalize_date_value(created_at) or "Unknown"
+        
+        if staff not in by_marketing_staff:
+            by_marketing_staff[staff] = {
+                "count": 0,
+                "total_vnd": 0.0
+            }
+        
+        by_marketing_staff[staff]["count"] += 1
+        by_marketing_staff[staff]["total_vnd"] += total_vnd
+
+        if day_key not in by_date:
+            by_date[day_key] = {
+                "count": 0,
+                "total_vnd": 0.0
+            }
+        by_date[day_key]["count"] += 1
+        by_date[day_key]["total_vnd"] += total_vnd
+    
+    # Round values
+    for staff in by_marketing_staff:
+        by_marketing_staff[staff]["total_vnd"] = round(by_marketing_staff[staff]["total_vnd"], 2)
+    for day in by_date:
+        by_date[day]["total_vnd"] = round(by_date[day]["total_vnd"], 2)
+    
+    return {
+        "total_records": total_records,
+        "total_revenue_vnd": round(total_revenue_vnd, 2),
+        "average_vnd": round(average_vnd, 2),
+        "by_marketing_staff": by_marketing_staff,
+        "by_date": by_date
+    }
 
 
 def calculate_statistics(orders: list) -> dict:
@@ -577,7 +644,7 @@ async def get_statistics_by_filter(filter_request: FilterRequest = Body(...)) ->
     supabase = get_supabase()
     
     # Query để lấy dữ liệu cho statistics
-    stats_query = supabase.table("orders").select("total_vnd, total_amount_vnd, delivery_status, payment_status, team, country, marketing_staff, sale_staff, product, shift, check_result")
+    stats_query = supabase.table("orders").select("total_vnd, total_amount_vnd, delivery_status, payment_status, team, country, marketing_staff, sale_staff, product, shift, check_result, created_at")
     
     # Áp dụng date range nếu có
     if filter_request.date_range:
@@ -613,7 +680,7 @@ async def get_statistics_by_filter(filter_request: FilterRequest = Body(...)) ->
     try:
         # Lấy toàn bộ dữ liệu (giới hạn 50000 để tránh quá tải)
         stats_result = stats_query.limit(50000).execute()
-        statistics = calculate_statistics(stats_result.data)
+        statistics = calculate_orders_statistics_detail(stats_result.data)
         
         return JSONResponse(
             content={
@@ -640,7 +707,7 @@ async def get_statistics_by_query_params(request: Request) -> Any:
     supabase = get_supabase()
     
     # Query để lấy dữ liệu cho statistics
-    stats_query = supabase.table("orders").select("total_vnd, total_amount_vnd, delivery_status, payment_status, team, country, marketing_staff, sale_staff, product, shift, check_result")
+    stats_query = supabase.table("orders").select("total_vnd, total_amount_vnd, delivery_status, payment_status, team, country, marketing_staff, sale_staff, product, shift, check_result, created_at")
     
     params = dict(request.query_params)
     
@@ -662,7 +729,7 @@ async def get_statistics_by_query_params(request: Request) -> Any:
     try:
         # Lấy toàn bộ dữ liệu (giới hạn 50000 để tránh quá tải)
         stats_result = stats_query.limit(50000).execute()
-        statistics = calculate_statistics(stats_result.data)
+        statistics = calculate_orders_statistics_detail(stats_result.data)
         
         return JSONResponse(
             content={
@@ -688,8 +755,8 @@ async def get_detail_reports(
 ) -> Any:
     """
     Lấy danh sách detail_reports với bộ lọc theo query params.
-    Các trường có thể filter: ten, ngay, ca, san_pham, thi_truong, team, cpqc, so_mess_cmt
-    Ví dụ: /detail_reports?team=Team%20A&from_date=01/02/2026&to_date=10/02/2026
+    Các trường có thể filter: ten, ngay, ca, san_pham, thi_truong, cpqc, so_mess_cmt, nhan_su (danh sách tên cách nhau bởi dấu phẩy)
+    Ví dụ: /detail_reports?nhan_su=Nguyễn Văn A,Trần Thị B&from_date=01/02/2026&to_date=10/02/2026
     """
     supabase = get_supabase()
     q = supabase.table("detail_reports").select("*")
@@ -698,6 +765,14 @@ async def get_detail_reports(
     params.pop("limit", None)
     params.pop("offset", None)
     params.pop("after_id", None)
+    
+    # Parse nhan_su thành list tên nhân viên
+    if "nhan_su" in params and params["nhan_su"]:
+        nhan_su_str = params.pop("nhan_su")
+        # Split bằng dấu phẩy và trim whitespace
+        ten_list = [name.strip() for name in nhan_su_str.split(",") if name.strip()]
+        if ten_list:
+            params["ten"] = ten_list
     
     # Extract date_range từ params
     from_date = params.pop("from_date", None)
@@ -756,8 +831,7 @@ async def get_detail_reports_statistics(filter_request: FilterRequest = Body(...
     Body example:
     {
         "filters": {
-            "team": ["Team A", "Team B"],
-            "ten": "Nguyễn Văn A",
+            "nhan_su": "Nguyễn Văn A,Trần Thị B,Lê Văn C",
             "ca": "Sáng"
         },
         "date_range": {
@@ -769,10 +843,47 @@ async def get_detail_reports_statistics(filter_request: FilterRequest = Body(...
     """
     supabase = get_supabase()
     
+    # Parse nhan_su thành list tên nhân viên trong filters
+    if filter_request.filters and "nhan_su" in filter_request.filters:
+        nhan_su_value = filter_request.filters.pop("nhan_su")
+        if isinstance(nhan_su_value, str):
+            # Split bằng dấu phẩy và trim whitespace
+            ten_list = [name.strip() for name in nhan_su_value.split(",") if name.strip()]
+            if ten_list:
+                filter_request.filters["ten"] = ten_list
+        elif isinstance(nhan_su_value, list):
+            # Nếu là list, join rồi split lại để handle ["A,B", "C"] → ["A", "B", "C"]
+            all_names = ",".join(str(item) for item in nhan_su_value)
+            ten_list = [name.strip() for name in all_names.split(",") if name.strip()]
+            if ten_list:
+                filter_request.filters["ten"] = ten_list
+    
     stats_query = supabase.table("detail_reports").select("*")
+    
+    # Query orders table - CHỈ theo date range, không filter mapping
+    orders_query = supabase.table("orders").select("marketing_staff, total_vnd")
+    
+    # Áp dụng date range cho orders (sử dụng created_at)
+    if filter_request.date_range:
+        from_date = filter_request.date_range.get("from")
+        to_date = filter_request.date_range.get("to")
+        
+        if from_date:
+            parsed_from = parse_date_param(from_date)
+            if parsed_from:
+                day_start, _ = parsed_from
+                orders_query = orders_query.gte("created_at", day_start)
+        
+        if to_date:
+            parsed_to = parse_date_param(to_date)
+            if parsed_to:
+                _, day_end = parsed_to
+                orders_query = orders_query.lte("created_at", day_end)
     
     try:
         stats_result = stats_query.limit(50000).execute()
+        orders_result = orders_query.limit(50000).execute()
+        
         normalized_reports = [normalize_detail_reports_row(row) for row in stats_result.data]
         filtered_reports = apply_detail_reports_filters_in_memory(
             reports=normalized_reports,
@@ -780,7 +891,36 @@ async def get_detail_reports_statistics(filter_request: FilterRequest = Body(...
             date_range=filter_request.date_range,
             date_column=filter_request.date_column or "ngay",
         )
-        statistics = calculate_detail_reports_statistics(filtered_reports)
+        
+        # Extract unique staff names from filtered detail_reports
+        staff_names_in_report = list(set(row.get("ten") for row in filtered_reports if row.get("ten")))
+        
+        # Query orders count với same filters
+        orders_count_query = supabase.table("orders").select("id")
+        if filter_request.date_range:
+            from_date = filter_request.date_range.get("from")
+            to_date = filter_request.date_range.get("to")
+            if from_date:
+                parsed_from = parse_date_param(from_date)
+                if parsed_from:
+                    day_start, _ = parsed_from
+                    orders_count_query = orders_count_query.gte("created_at", day_start)
+            if to_date:
+                parsed_to = parse_date_param(to_date)
+                if parsed_to:
+                    _, day_end = parsed_to
+                    orders_count_query = orders_count_query.lte("created_at", day_end)
+        
+        orders_count_result = orders_count_query.limit(50000).execute()
+        orders_count_value = len(orders_count_result.data)
+        
+        statistics = calculate_detail_reports_statistics(
+            filtered_reports, 
+            filters=filter_request.filters,
+            orders_data=orders_result.data,
+            staff_names=staff_names_in_report,
+            orders_count=orders_count_value
+        )
         
         return JSONResponse(
             content={
@@ -802,16 +942,39 @@ async def get_detail_reports_statistics(filter_request: FilterRequest = Body(...
 async def get_detail_reports_statistics_by_params(request: Request) -> Any:
     """
     Tính toán thống kê từ bảng detail_reports dựa trên query params.
-    Ví dụ: /detail_reports/statistics?team=Team%20A&ngay=01/02/2026&from_date=01/02/2026&to_date=10/02/2026
+    Ví dụ: /detail_reports/statistics?nhan_su=Nguyễn Văn A,Trần Thị B&from_date=01/02/2026&to_date=10/02/2026&ca=Sáng
     """
     supabase = get_supabase()
     
     params = dict(request.query_params)
     
+    # Parse nhan_su thành list tên nhân viên
+    if "nhan_su" in params and params["nhan_su"]:
+        nhan_su_str = params.pop("nhan_su")
+        # Split bằng dấu phẩy và trim whitespace
+        ten_list = [name.strip() for name in nhan_su_str.split(",") if name.strip()]
+        if ten_list:
+            params["ten"] = ten_list
+    
+    # Parse nhan_su thành list tên nhân viên
+    if "nhan_su" in params and params["nhan_su"]:
+        nhan_su_str = params.pop("nhan_su")
+        # Split bằng dấu phẩy và trim whitespace
+        ten_list = [name.strip() for name in nhan_su_str.split(",") if name.strip()]
+        if ten_list:
+            params["ten"] = ten_list
+    
     # Extract date_range từ params
     from_date = params.pop("from_date", None)
     to_date = params.pop("to_date", None)
     date_column = params.pop("date_column", "ngay")
+    
+    # Lưu lại filters (ca, san_pham, thi_truong) - chỉ những có giá trị không trống
+    breakdowns_filters = {
+        k: v for k, v in params.items() 
+        if k in ("ca", "san_pham", "thi_truong") 
+        and v and str(v).strip()  # Chỉ giữ giá trị không trống
+    }
     
     date_range = None
     if from_date or to_date:
@@ -823,8 +986,13 @@ async def get_detail_reports_statistics_by_params(request: Request) -> Any:
     
     stats_query = supabase.table("detail_reports").select("*")
     
+    # Query orders table - KHÔNG filter date, lấy toàn bộ để match với staff names
+    orders_query = supabase.table("orders").select("marketing_staff, total_vnd")
+    
     try:
         stats_result = stats_query.limit(50000).execute()
+        orders_result = orders_query.limit(50000).execute()
+        
         normalized_reports = [normalize_detail_reports_row(row) for row in stats_result.data]
         filtered_reports = apply_detail_reports_filters_in_memory(
             reports=normalized_reports,
@@ -832,7 +1000,33 @@ async def get_detail_reports_statistics_by_params(request: Request) -> Any:
             date_range=date_range,
             date_column=date_column,
         )
-        statistics = calculate_detail_reports_statistics(filtered_reports)
+        
+        # Extract unique staff names từ filtered detail_reports
+        staff_names_in_report = list(set(row.get("ten") for row in filtered_reports if row.get("ten")))
+        
+        # Query orders count với same date_range
+        orders_count_query = supabase.table("orders").select("id")
+        if from_date:
+            parsed_from = parse_date_param(from_date)
+            if parsed_from:
+                day_start, _ = parsed_from
+                orders_count_query = orders_count_query.gte("created_at", day_start)
+        if to_date:
+            parsed_to = parse_date_param(to_date)
+            if parsed_to:
+                _, day_end = parsed_to
+                orders_count_query = orders_count_query.lte("created_at", day_end)
+        
+        orders_count_result = orders_count_query.limit(50000).execute()
+        orders_count_value = len(orders_count_result.data)
+        
+        statistics = calculate_detail_reports_statistics(
+            filtered_reports, 
+            filters=breakdowns_filters,
+            orders_data=orders_result.data,
+            staff_names=staff_names_in_report,
+            orders_count=orders_count_value
+        )
         
         return JSONResponse(
             content={
@@ -850,15 +1044,24 @@ async def get_detail_reports_statistics_by_params(request: Request) -> Any:
         )
 
 
-def calculate_detail_reports_statistics(reports: list) -> dict:
-    """Tính toán thống kê từ danh sách detail_reports - chỉ by_ten."""
+def calculate_detail_reports_statistics(reports: list, filters: dict = None, orders_data: list = None, staff_names: list = None, orders_count: int = 0) -> dict:
+    """
+    Tính toán thống kê từ danh sách detail_reports.
+    - by_ten: luôn có, bao gồm count, total_mess_cmt, total_cpqc, total_vnd (từ orders)
+    - by_ngay: luôn có, bao gồm count, total_mess_cmt, total_cpqc theo ngày
+    - orders_data: danh sách orders để tính total_vnd
+    - staff_names: danh sách tên nhân viên từ detail_reports để filter orders
+    - orders_count: tổng số đơn hàng từ bảng orders theo các filter
+    """
     if not reports:
         return {
-            "total_records": 0,
+            "total_count": orders_count,
             "total_cpqc": 0,
             "total_mess_cmt": 0,
             "average_mess_cmt": 0,
-            "by_ten": {}
+            "gia_mess": 0,
+            "by_ten": {},
+            "by_ngay": {}
         }
     
     total_records = len(reports)
@@ -877,35 +1080,102 @@ def calculate_detail_reports_statistics(reports: list) -> dict:
     total_mess_cmt = sum(float(row.get("so_mess_cmt") or 0) for row in reports)
     avg_mess_cmt = total_mess_cmt / total_records if total_records > 0 else 0
     
-    # Chỉ tính by_ten
-    ten_count = {}
-    ten_mess_cmt = {}
-    ten_cpqc = {}
-    for row in reports:
-        key = row.get("ten") or "Unknown"
-        ten_count[key] = ten_count.get(key, 0) + 1
-
-        mess_cmt = float(row.get("so_mess_cmt") or 0)
-        ten_mess_cmt[key] = ten_mess_cmt.get(key, 0) + mess_cmt
-
-        cpqc_value = row.get("cpqc")
-        if cpqc_value:
-            try:
-                cpqc_val = float(cpqc_value)
-                ten_cpqc[key] = ten_cpqc.get(key, 0) + cpqc_val
-            except (ValueError, TypeError):
-                ten_cpqc[key] = ten_cpqc.get(key, 0) + 1
+    # Tính total_vnd và total_sodon từ orders cho từng staff
+    staff_vnd_map = {}
+    staff_order_count_map = {}
+    if orders_data and staff_names:
+        # Create case-insensitive lookup for staff_names
+        staff_names_lower = {name.lower(): name for name in staff_names}
+        
+        for order in orders_data:
+            marketing_staff = order.get("marketing_staff")
+            # Chỉ tính cho staff có trong filtered detail_reports (case-insensitive match)
+            if marketing_staff:
+                marketing_staff_lower = str(marketing_staff).strip().lower()
+                if marketing_staff_lower in staff_names_lower:
+                    # Use original name from staff_names for consistency
+                    original_name = staff_names_lower[marketing_staff_lower]
+                    total_vnd = order.get("total_vnd") or 0
+                    try:
+                        vnd_value = float(total_vnd)
+                        staff_vnd_map[original_name] = staff_vnd_map.get(original_name, 0) + vnd_value
+                    except (ValueError, TypeError):
+                        pass
+                    # Đếm số đơn
+                    staff_order_count_map[original_name] = staff_order_count_map.get(original_name, 0) + 1
     
+    # Helper tính breakdown theo field
+    def calculate_breakdown(reports_list, field_key, include_total_vnd=True, normalize_day=False):
+        count = {}
+        mess_cmt_sum = {}
+        cpqc_sum = {}
+        vnd_sum = {}
+        order_count_sum = {}
+        for row in reports_list:
+            key = row.get(field_key) or "Unknown"
+            if normalize_day:
+                key = normalize_date_value(key) or "Unknown"
+            count[key] = count.get(key, 0) + 1
+            mess_cmt = float(row.get("so_mess_cmt") or 0)
+            mess_cmt_sum[key] = mess_cmt_sum.get(key, 0) + mess_cmt
+            cpqc_value = row.get("cpqc")
+            if cpqc_value:
+                try:
+                    cpqc_val = float(cpqc_value)
+                    cpqc_sum[key] = cpqc_sum.get(key, 0) + cpqc_val
+                except (ValueError, TypeError):
+                    cpqc_sum[key] = cpqc_sum.get(key, 0) + 1
+            
+            # Thêm total_vnd và total_sodon từ maps
+            if include_total_vnd and key in staff_vnd_map:
+                vnd_sum[key] = staff_vnd_map[key]
+            if include_total_vnd and key in staff_order_count_map:
+                order_count_sum[key] = staff_order_count_map[key]
+        
+        result = {
+            "count": count,
+            "total_mess_cmt": {k: round(v, 2) for k, v in mess_cmt_sum.items()},
+            "total_cpqc": {k: round(v, 2) for k, v in cpqc_sum.items()},
+            "gia_mess": {
+                k: round((cpqc_sum.get(k, 0) / v), 6) if v else 0
+                for k, v in mess_cmt_sum.items()
+            }
+        }
+        
+        # Chỉ thêm total_vnd và total_sodon nếu có data từ orders
+        if include_total_vnd and vnd_sum:
+            result["total_vnd"] = {k: round(v, 2) for k, v in vnd_sum.items()}
+        if include_total_vnd and order_count_sum:
+            result["total_sodon"] = order_count_sum
+        
+        return result
+    
+    by_ngay_summary = calculate_breakdown(reports, "ngay", include_total_vnd=False, normalize_day=True)
+    by_ngay: Dict[str, Any] = {}
+    for day in by_ngay_summary.get("count", {}).keys():
+        day_reports = [
+            row for row in reports
+            if (normalize_date_value(row.get("ngay")) or "Unknown") == day
+        ]
+        day_total_mess = by_ngay_summary.get("total_mess_cmt", {}).get(day, 0)
+        day_total_cpqc = by_ngay_summary.get("total_cpqc", {}).get(day, 0)
+        by_ngay[day] = {
+            "count": by_ngay_summary.get("count", {}).get(day, 0),
+            "total_mess_cmt": day_total_mess,
+            "total_cpqc": day_total_cpqc,
+            "gia_mess": round((day_total_cpqc / day_total_mess), 6) if day_total_mess else 0,
+            "by_ten": calculate_breakdown(day_reports, "ten", include_total_vnd=True, normalize_day=False)
+        }
+
+    # Tính by_ten và by_ngay
     return {
-        "total_records": total_records,
+        "total_count": orders_count,
         "total_cpqc": round(total_cpqc, 2),
         "total_mess_cmt": round(total_mess_cmt, 2),
         "average_mess_cmt": round(avg_mess_cmt, 2),
-        "by_ten": {
-            "count": ten_count,
-            "total_mess_cmt": {k: round(v, 2) for k, v in ten_mess_cmt.items()},
-            "total_cpqc": {k: round(v, 2) for k, v in ten_cpqc.items()}
-        }
+        "gia_mess": round((total_cpqc / total_mess_cmt), 6) if total_mess_cmt else 0,
+        "by_ten": calculate_breakdown(reports, "ten", include_total_vnd=True, normalize_day=False),
+        "by_ngay": by_ngay
     }
 
 
@@ -917,7 +1187,11 @@ def root():
         "orders": "GET /orders?created_at=22/12/2026&city=Carson",
         "orders_statistics_get": "GET /orders/statistics?created_at=01/03/2026&team=Team%20A",
         "orders_statistics_post": "POST /orders/statistics với body JSON",
-        "detail_reports": "GET /detail_reports?team=Team%20A&ngay=01/02/2026",
-        "detail_reports_statistics_get": "GET /detail_reports/statistics?team=Team%20A&ngay=01/02/2026",
+        "detail_reports": "GET /detail_reports?nhan_su=Nguyễn Văn A,Trần Thị B&ngay=01/02/2026",
+        "detail_reports_statistics_get": "GET /detail_reports/statistics?nhan_su=Nguyễn Văn A&ca=Sáng",
         "detail_reports_statistics_post": "POST /detail_reports/statistics với body JSON"
     }
+
+
+
+
