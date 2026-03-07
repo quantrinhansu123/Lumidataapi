@@ -104,6 +104,12 @@ RESPONSE_LABELS = {
     "shift": "shift"
 }
 
+# Mapping từ parameter name sang column name trong DB
+# Ví dụ: ?team=xxx sẽ filter cột shift trong DB
+PARAM_TO_COLUMN_MAPPING = {
+    "team": "shift",  # Parameter 'team' map to column 'shift'
+}
+
 # Các cột của bảng detail_reports
 ALL_DETAIL_REPORTS_COLUMNS = {
     "id", "ten", "ngay", "ca", "san_pham", "thi_truong", "team", "cpqc", "so_mess_cmt",
@@ -141,7 +147,80 @@ DETAIL_REPORTS_RESPONSE_LABELS = {
 }
 
 DETAIL_REPORTS_CANONICAL_COLUMNS = {
-    "ten", "ngay", "ca", "san_pham", "thi_truong", "cpqc", "so_mess_cmt"
+    "ten", "ngay", "ca", "san_pham", "thi_truong", "team"
+}
+
+DETAIL_REPORTS_PARAM_MAPPING = {
+    "teammkt": "team",
+    "nhan_su": "ten",
+    "nhansu": "ten",
+    "marketing_staff": "ten",
+    "staff": "ten",
+    "tennhanvien": "ten",
+    "camkt": "ca",
+    "shift": "ca",
+    "product": "san_pham",
+    "productmkt": "san_pham",
+    "sanpham": "san_pham",
+    "market": "thi_truong",
+    "marketmkt": "thi_truong",
+    "thitruong": "thi_truong",
+    "date": "ngay",
+    "report_date": "ngay",
+}
+
+# Cấu hình cho bảng sales_reports (tương tự detail_reports)
+SALES_REPORTS_SELECT_COLUMNS = "*"
+SALES_REPORTS_RESPONSE_LABELS = {
+    "id": "id",
+    "ten": "ten",
+    "ngay": "date",
+    "ca": "ca",
+    "san_pham": "san_pham",
+    "thi_truong": "thi_truong",
+    "team": "team",
+    "cpqc": "cpqc",
+    "so_mess_cmt": "so_mess_cmt",
+    "name": "ten",
+    "date": "date",
+    "shift": "ca",
+    "product": "san_pham",
+    "market": "thi_truong",
+    "Team": "team",
+    "CPQC": "cpqc",
+    "Số_Mess_Cmt": "so_mess_cmt",
+    "Tên": "ten",
+    "Ngày": "date",
+    "Sản_phẩm": "san_pham",
+    "Thị_trường": "thi_truong"
+}
+
+SALES_REPORTS_CANONICAL_COLUMNS = {
+    "ten", "date", "ca", "san_pham", "thi_truong", "team"
+}
+
+SALES_REPORTS_PARAM_MAPPING = {
+    "teamsale": "team",
+    "teammkt": "team",
+    "nhan_su": "ten",
+    "nhansu": "ten",
+    "marketing_staff": "ten",
+    "staff": "ten",
+    "tennhanvien": "ten",
+    "casle": "ca",
+    "camkt": "ca",
+    "shift": "ca",
+    "product": "san_pham",
+    "productsale": "san_pham",
+    "productmkt": "san_pham",
+    "sanpham": "san_pham",
+    "market": "thi_truong",
+    "marketsale": "thi_truong",
+    "marketmkt": "thi_truong",
+    "thitruong": "thi_truong",
+    "ngay": "date",
+    "date": "date",
+    "report_date": "date",
 }
 
 
@@ -290,7 +369,199 @@ def apply_detail_reports_filters_in_memory(
         if from_date or to_date:
             normalized_date_col = DETAIL_REPORTS_RESPONSE_LABELS.get(date_column, date_column)
             if normalized_date_col not in DETAIL_REPORTS_CANONICAL_COLUMNS:
-                normalized_date_col = "ngay"
+                normalized_date_col = "date"
+
+            range_filtered = []
+            for row in filtered:
+                row_date = normalize_date_value(row.get(normalized_date_col))
+                if not row_date:
+                    continue
+                if from_date and row_date < from_date:
+                    continue
+                if to_date and row_date > to_date:
+                    continue
+                range_filtered.append(row)
+            filtered = range_filtered
+
+    return filtered
+
+
+def normalize_detail_reports_filters(filters: Dict[str, Any]) -> Dict[str, Any]:
+    """Chuẩn hóa filters cho detail_reports: map param và hỗ trợ nhiều giá trị cách nhau bởi dấu phẩy."""
+    normalized: Dict[str, Any] = {}
+
+    for raw_key, raw_value in (filters or {}).items():
+        if raw_value is None:
+            continue
+
+        mapped_key = DETAIL_REPORTS_PARAM_MAPPING.get(raw_key, raw_key)
+
+        values: List[str] = []
+        if isinstance(raw_value, list):
+            for item in raw_value:
+                item_str = str(item).strip()
+                if not item_str:
+                    continue
+                values.extend([part.strip() for part in item_str.split(",") if part.strip()])
+        else:
+            value_str = str(raw_value).strip()
+            if value_str:
+                values = [part.strip() for part in value_str.split(",") if part.strip()]
+
+        if not values:
+            continue
+
+        value_to_set: Any = values if len(values) > 1 else values[0]
+
+        if mapped_key in normalized:
+            existing = normalized[mapped_key]
+            existing_list = existing if isinstance(existing, list) else [existing]
+            new_list = value_to_set if isinstance(value_to_set, list) else [value_to_set]
+            merged = [str(item).strip() for item in (existing_list + new_list) if str(item).strip()]
+            normalized[mapped_key] = merged if len(merged) > 1 else merged[0]
+        else:
+            normalized[mapped_key] = value_to_set
+
+    return normalized
+
+
+def normalize_sales_reports_row(row: dict) -> dict:
+    """Chuẩn hóa key từ sales_reports về bộ key chuẩn."""
+    normalized = {}
+    for raw_key, value in row.items():
+        key_str = str(raw_key).strip()
+        mapped_key = SALES_REPORTS_RESPONSE_LABELS.get(key_str)
+
+        if mapped_key is None:
+            lowered_key = key_str.lower()
+            for alias, canonical in SALES_REPORTS_RESPONSE_LABELS.items():
+                if str(alias).strip().lower() == lowered_key:
+                    mapped_key = canonical
+                    break
+
+        if mapped_key is None:
+            mapped_key = key_str
+
+        if mapped_key in normalized and normalized[mapped_key] not in (None, ""):
+            continue
+        normalized[mapped_key] = value
+
+    return normalized
+
+
+def normalize_sales_reports_filters(filters: Dict[str, Any]) -> Dict[str, Any]:
+    """Chuẩn hóa filters cho sales_reports: map param và hỗ trợ a,b,c."""
+    normalized: Dict[str, Any] = {}
+
+    for raw_key, raw_value in (filters or {}).items():
+        if raw_value is None:
+            continue
+
+        mapped_key = SALES_REPORTS_PARAM_MAPPING.get(raw_key, raw_key)
+
+        values: List[str] = []
+        if isinstance(raw_value, list):
+            for item in raw_value:
+                item_str = str(item).strip()
+                if not item_str:
+                    continue
+                values.extend([part.strip() for part in item_str.split(",") if part.strip()])
+        else:
+            value_str = str(raw_value).strip()
+            if value_str:
+                values = [part.strip() for part in value_str.split(",") if part.strip()]
+
+        if not values:
+            continue
+
+        value_to_set: Any = values if len(values) > 1 else values[0]
+
+        if mapped_key in normalized:
+            existing = normalized[mapped_key]
+            existing_list = existing if isinstance(existing, list) else [existing]
+            new_list = value_to_set if isinstance(value_to_set, list) else [value_to_set]
+            merged = [str(item).strip() for item in (existing_list + new_list) if str(item).strip()]
+            normalized[mapped_key] = merged if len(merged) > 1 else merged[0]
+        else:
+            normalized[mapped_key] = value_to_set
+
+    return normalized
+
+
+def apply_sales_reports_filters_in_memory(
+    reports: List[dict],
+    filters: Dict[str, Any],
+    date_range: Optional[Dict[str, str]] = None,
+    date_column: str = "date",
+) -> List[dict]:
+    """Lọc sales_reports trong Python theo key chuẩn."""
+    filtered = reports
+
+    normalized_filters: Dict[str, Any] = {}
+    for col, val in (filters or {}).items():
+        if val is None:
+            continue
+        if isinstance(val, str) and not val.strip():
+            continue
+        if isinstance(val, list):
+            cleaned_list = [item for item in val if str(item).strip()]
+            if not cleaned_list:
+                continue
+            val = cleaned_list
+        mapped_col = SALES_REPORTS_RESPONSE_LABELS.get(col, col)
+        if mapped_col in SALES_REPORTS_CANONICAL_COLUMNS:
+            normalized_filters[mapped_col] = val
+
+    for col, val in normalized_filters.items():
+        if isinstance(val, list):
+            if col == "date":
+                allowed_dates = {
+                    parse_date_only(str(item))
+                    for item in val
+                    if str(item).strip()
+                }
+                allowed_dates = {d for d in allowed_dates if d}
+                if not allowed_dates:
+                    continue
+                filtered = [
+                    row for row in filtered
+                    if normalize_date_value(row.get("date")) in allowed_dates
+                ]
+            else:
+                allowed_values = [
+                    str(item).strip()
+                    for item in val
+                    if str(item).strip()
+                ]
+                if not allowed_values:
+                    continue
+                allowed_values_lower = {v.lower(): v for v in allowed_values}
+                filtered = [
+                    row for row in filtered
+                    if str(row.get(col) or "").strip().lower() in allowed_values_lower
+                ]
+        elif col == "date":
+            date_str = parse_date_only(str(val))
+            if date_str:
+                filtered = [
+                    row for row in filtered
+                    if normalize_date_value(row.get("date")) == date_str
+                ]
+        else:
+            target = str(val).strip().lower()
+            filtered = [
+                row for row in filtered
+                if str(row.get(col) or "").strip().lower() == target
+            ]
+
+    if date_range:
+        from_date = parse_date_only(str(date_range.get("from") or "")) if date_range.get("from") else None
+        to_date = parse_date_only(str(date_range.get("to") or "")) if date_range.get("to") else None
+
+        if from_date or to_date:
+            normalized_date_col = SALES_REPORTS_RESPONSE_LABELS.get(date_column, date_column)
+            if normalized_date_col not in SALES_REPORTS_CANONICAL_COLUMNS:
+                normalized_date_col = "date"
 
             range_filtered = []
             for row in filtered:
@@ -309,30 +580,52 @@ def apply_detail_reports_filters_in_memory(
 
 def apply_filters_to_query(query, filters: dict):
     """Áp dụng bộ lọc vào query Supabase."""
-    for col, val in filters.items():
+    for param_name, val in filters.items():
+        # Map parameter name sang column name (vd: team -> shift)
+        col = PARAM_TO_COLUMN_MAPPING.get(param_name, param_name)
+
+        raw_values: List[Any]
+        if isinstance(val, list):
+            raw_values = [item for item in val if str(item).strip()]
+        elif isinstance(val, str) and "," in val:
+            raw_values = [item.strip() for item in val.split(",") if item.strip()]
+        else:
+            raw_values = [val] if str(val).strip() else []
+
+        if not raw_values:
+            continue
+
+        val = raw_values if len(raw_values) > 1 else raw_values[0]
+        
         if col not in ALL_ORDER_COLUMNS or not val:
             continue
         
         # Xử lý mảng (OR condition) - ví dụ: team=["Team A", "Team B"]
         if isinstance(val, list):
-            if len(val) > 0:
-                # Tạo OR condition: team.eq("Team A").or_("team.eq(Team B)")
+            if col in TIMESTAMP_COLUMNS:
                 or_conditions = []
                 for item in val:
-                    if col in TIMESTAMP_COLUMNS:
-                        parsed = parse_date_param(str(item))
-                        if parsed:
-                            day_start, day_end = parsed
-                            or_conditions.append(f"{col}.gte.{day_start},{col}.lte.{day_end}")
-                    elif col in DATE_COLUMNS:
-                        date_str = parse_date_only(str(item))
-                        if date_str:
-                            or_conditions.append(f"{col}.eq.{date_str}")
-                    else:
-                        or_conditions.append(f"{col}.eq.{item}")
+                    parsed = parse_date_param(str(item))
+                    if parsed:
+                        day_start, day_end = parsed
+                        or_conditions.append(f"and({col}.gte.{day_start},{col}.lte.{day_end})")
                 if or_conditions:
-                    # Supabase PostgREST: dùng .in_() cho array
-                    query = query.in_(col, val)
+                    query = query.or_(",".join(or_conditions))
+                continue
+
+            if col in DATE_COLUMNS:
+                parsed_dates = []
+                for item in val:
+                    date_str = parse_date_only(str(item))
+                    if date_str:
+                        parsed_dates.append(date_str)
+                if parsed_dates:
+                    query = query.in_(col, parsed_dates)
+                continue
+
+            # Cột text/khác: dùng in_ cho nhiều giá trị
+            query = query.in_(col, [str(item).strip() for item in val if str(item).strip()])
+            continue
         # Xử lý giá trị đơn
         elif col in TIMESTAMP_COLUMNS:
             parsed = parse_date_param(str(val))
@@ -349,200 +642,29 @@ def apply_filters_to_query(query, filters: dict):
     return query
 
 
-def calculate_orders_statistics_detail(orders: list) -> dict:
-    """
-    Tính toán thống kê từ danh sách orders.
-    - total_records: số lượng đơn hàng
-    - total_revenue_vnd: Tổng tiền VNĐ (sum total_vnd)
-    - average_vnd: Trung bình tiền/đơn
-    - by_marketing_staff: Tổng tiền theo nhân viên marketing
-    """
-    if not orders:
-        return {
-            "total_records": 0,
-            "total_revenue_vnd": 0,
-            "average_vnd": 0,
-            "by_marketing_staff": {},
-            "by_date": {}
-        }
-    
-    total_records = len(orders)
-    
-    # Tính tổng và trung bình tiền
-    total_revenue_vnd = sum(float(row.get("total_vnd") or 0) for row in orders)
-    average_vnd = total_revenue_vnd / total_records if total_records > 0 else 0
-    
-    # Tính by_marketing_staff: count + total_vnd
-    by_marketing_staff = {}
-    by_date = {}
-    for row in orders:
-        staff = row.get("marketing_staff") or "Unknown"
-        total_vnd = float(row.get("total_vnd") or 0)
-        created_at = row.get("created_at")
-        day_key = normalize_date_value(created_at) or "Unknown"
-        
-        if staff not in by_marketing_staff:
-            by_marketing_staff[staff] = {
-                "count": 0,
-                "total_vnd": 0.0
-            }
-        
-        by_marketing_staff[staff]["count"] += 1
-        by_marketing_staff[staff]["total_vnd"] += total_vnd
-
-        if day_key not in by_date:
-            by_date[day_key] = {
-                "count": 0,
-                "total_vnd": 0.0
-            }
-        by_date[day_key]["count"] += 1
-        by_date[day_key]["total_vnd"] += total_vnd
-    
-    # Round values
-    for staff in by_marketing_staff:
-        by_marketing_staff[staff]["total_vnd"] = round(by_marketing_staff[staff]["total_vnd"], 2)
-    for day in by_date:
-        by_date[day]["total_vnd"] = round(by_date[day]["total_vnd"], 2)
-    
-    return {
-        "total_records": total_records,
-        "total_revenue_vnd": round(total_revenue_vnd, 2),
-        "average_vnd": round(average_vnd, 2),
-        "by_marketing_staff": by_marketing_staff,
-        "by_date": by_date
-    }
-
-
-def calculate_statistics(orders: list) -> dict:
-    """Tính toán thống kê từ danh sách orders."""
-    if not orders:
-        return {
-            "total_orders": 0,
-            "total_revenue_vnd": 0,
-            "total_amount_vnd": 0,
-            "average_order_value": 0,
-            "by_delivery_status": {},
-            "by_payment_status": {},
-            "by_team": {},
-            "by_country": {},
-            "by_marketing_staff": {},
-            "by_sale_staff": {},
-            "by_product": {},
-            "by_shift": {},
-            "by_check_result": {}
-        }
-    
-    total_revenue = sum(float(row.get("total_vnd") or 0) for row in orders)
-    total_amount = sum(float(row.get("total_amount_vnd") or 0) for row in orders)
-    total_orders = len(orders)
-    avg_order_value = total_revenue / total_orders if total_orders > 0 else 0
-    
-    # Helper function để tính count và revenue
-    def calculate_group_stats(orders_list, group_key):
-        count = {}
-        revenue = {}
-        for row in orders_list:
-            key = row.get(group_key) or "Unknown"
-            count[key] = count.get(key, 0) + 1
-            rev = float(row.get("total_vnd") or 0)
-            revenue[key] = revenue.get(key, 0) + rev
-        return count, revenue
-    
-    # Thống kê theo delivery_status
-    delivery_status_count = {}
-    for row in orders:
-        status = row.get("delivery_status") or "Unknown"
-        delivery_status_count[status] = delivery_status_count.get(status, 0) + 1
-    
-    # Thống kê theo payment_status
-    payment_status_count = {}
-    for row in orders:
-        status = row.get("payment_status") or "Unknown"
-        payment_status_count[status] = payment_status_count.get(status, 0) + 1
-    
-    # Thống kê theo team
-    team_count, team_revenue = calculate_group_stats(orders, "team")
-    
-    # Thống kê theo country
-    country_count, country_revenue = calculate_group_stats(orders, "country")
-    
-    # Thống kê theo marketing_staff
-    marketing_count, marketing_revenue = calculate_group_stats(orders, "marketing_staff")
-    
-    # Thống kê theo sale_staff
-    sale_count, sale_revenue = calculate_group_stats(orders, "sale_staff")
-    
-    # Thống kê theo product
-    product_count, product_revenue = calculate_group_stats(orders, "product")
-    
-    # Thống kê theo shift
-    shift_count, shift_revenue = calculate_group_stats(orders, "shift")
-    
-    # Thống kê theo check_result
-    check_result_count, check_result_revenue = calculate_group_stats(orders, "check_result")
-    
-    return {
-        "total_orders": total_orders,
-        "total_revenue_vnd": round(total_revenue, 2),
-        "total_amount_vnd": round(total_amount, 2),
-        "average_order_value": round(avg_order_value, 2),
-        "by_delivery_status": {
-            "count": delivery_status_count,
-            "percentage": {
-                k: round((v / total_orders * 100), 2) if total_orders > 0 else 0
-                for k, v in delivery_status_count.items()
-            }
-        },
-        "by_payment_status": {
-            "count": payment_status_count,
-            "percentage": {
-                k: round((v / total_orders * 100), 2) if total_orders > 0 else 0
-                for k, v in payment_status_count.items()
-            }
-        },
-        "by_team": {
-            "count": team_count,
-            "revenue": {k: round(v, 2) for k, v in team_revenue.items()}
-        },
-        "by_country": {
-            "count": country_count,
-            "revenue": {k: round(v, 2) for k, v in country_revenue.items()}
-        },
-        "by_marketing_staff": {
-            "count": marketing_count,
-            "revenue": {k: round(v, 2) for k, v in marketing_revenue.items()}
-        },
-        "by_sale_staff": {
-            "count": sale_count,
-            "revenue": {k: round(v, 2) for k, v in sale_revenue.items()}
-        },
-        "by_product": {
-            "count": product_count,
-            "revenue": {k: round(v, 2) for k, v in product_revenue.items()}
-        },
-        "by_shift": {
-            "count": shift_count,
-            "revenue": {k: round(v, 2) for k, v in shift_revenue.items()}
-        },
-        "by_check_result": {
-            "count": check_result_count,
-            "revenue": {k: round(v, 2) for k, v in check_result_revenue.items()}
-        }
-    }
-
-
 @app.get("/orders")
 async def get_orders(
     request: Request,
     limit: int = Query(100, ge=1, le=1000, description="Số bản ghi tối đa"),
     offset: int = Query(0, ge=0, description="Vị trí bắt đầu"),
     after_id: Optional[str] = Query(None, description="Cursor: id bản ghi cuối trang trước (trang sau = after_id này)"),
+    from_date: Optional[str] = Query(None, description="Ngày bắt đầu (dd/mm/yyyy)"),
+    to_date: Optional[str] = Query(None, description="Ngày kết thúc (dd/mm/yyyy)"),
+    date_column: str = Query("order_date", description="Cột date để filter (order_date, created_at, ...)"),
 ) -> Any:
     """
     Lấy danh sách orders với bộ lọc theo query params.
     Phân trang: dùng after_id (cursor) để tránh trùng/thiếu. Trang 1 không truyền after_id;
     trang sau truyền after_id=id của bản ghi cuối trong trang trước.
-    Ví dụ: /orders?city=Ewa%20Beach&limit=2 rồi /orders?city=Ewa%20Beach&limit=2&after_id=<id_cuoi_trang_1>
+    
+    Bộ lọc hỗ trợ:
+    - team: Lọc theo ca làm việc (cột shift trong DB)
+    - delivery_status, payment_status, country, product, check_result
+    - marketing_staff, sale_staff, delivery_staff, cskh
+    - from_date, to_date: Khoảng thời gian (dd/mm/yyyy)
+    - date_column: Cột date để lọc (mặc định: order_date)
+    
+    Ví dụ: /orders?team=Morning&delivery_status=Delivered&product=Product%20A&from_date=01/01/2026&to_date=31/01/2026
     """
     supabase = get_supabase()
     q = supabase.table("orders").select(SELECT_COLUMNS)
@@ -551,21 +673,35 @@ async def get_orders(
     params.pop("limit", None)
     params.pop("offset", None)
     params.pop("after_id", None)
+    params.pop("from_date", None)
+    params.pop("to_date", None)
+    params.pop("date_column", None)
 
-    for col, val in params.items():
-        if col not in ALL_ORDER_COLUMNS or not val:
-            continue
-        if col in TIMESTAMP_COLUMNS:
-            parsed = parse_date_param(val)
-            if parsed:
-                day_start, day_end = parsed
-                q = q.gte(col, day_start).lte(col, day_end)
-        elif col in DATE_COLUMNS:
-            date_str = parse_date_only(val)
-            if date_str:
-                q = q.eq(col, date_str)
-        else:
-            q = q.eq(col, val.strip())
+    # Áp dụng date range nếu có
+    if from_date or to_date:
+        if date_column in TIMESTAMP_COLUMNS:
+            if from_date:
+                parsed_from = parse_date_param(from_date)
+                if parsed_from:
+                    day_start, _ = parsed_from
+                    q = q.gte(date_column, day_start)
+            if to_date:
+                parsed_to = parse_date_param(to_date)
+                if parsed_to:
+                    _, day_end = parsed_to
+                    q = q.lte(date_column, day_end)
+        elif date_column in DATE_COLUMNS:
+            if from_date:
+                date_str_from = parse_date_only(from_date)
+                if date_str_from:
+                    q = q.gte(date_column, date_str_from)
+            if to_date:
+                date_str_to = parse_date_only(to_date)
+                if date_str_to:
+                    q = q.lte(date_column, date_str_to)
+
+    # Áp dụng các filter khác (hỗ trợ nhiều giá trị: a,b,c)
+    q = apply_filters_to_query(q, params)
 
     # PostgREST/Supabase không đảm bảo thứ tự → luôn lấy tối đa 1000 bản ghi (offset=0),
     # sắp xếp theo id trong Python rồi cắt [offset:offset+limit].
@@ -577,32 +713,6 @@ async def get_orders(
         fetch_all_then_slice = True
 
     try:
-        # Query riêng để lấy toàn bộ dữ liệu cho statistics (chỉ các cột cần thiết)
-        stats_query = supabase.table("orders").select("total_vnd, total_amount_vnd, delivery_status, payment_status, team, country")
-        stats_params = dict(request.query_params)
-        stats_params.pop("limit", None)
-        stats_params.pop("offset", None)
-        stats_params.pop("after_id", None)
-        
-        for col, val in stats_params.items():
-            if col not in ALL_ORDER_COLUMNS or not val:
-                continue
-            if col in TIMESTAMP_COLUMNS:
-                parsed = parse_date_param(val)
-                if parsed:
-                    day_start, day_end = parsed
-                    stats_query = stats_query.gte(col, day_start).lte(col, day_end)
-            elif col in DATE_COLUMNS:
-                date_str = parse_date_only(val)
-                if date_str:
-                    stats_query = stats_query.eq(col, date_str)
-            else:
-                stats_query = stats_query.eq(col, val.strip())
-        
-        # Lấy toàn bộ dữ liệu cho statistics (giới hạn 10000 để tránh quá tải)
-        stats_result = stats_query.limit(10000).execute()
-        statistics = calculate_statistics(stats_result.data)
-        
         # Query dữ liệu để trả về (có phân trang)
         result = q.execute()
         raw = result.data
@@ -619,138 +729,13 @@ async def get_orders(
             content={
                 "data": data,
                 "count": len(data),
-                "next_after_id": last_id,
-                "statistics": statistics
+                "next_after_id": last_id
             },
             status_code=200,
         )
     except Exception as e:
         return JSONResponse(
             content={"error": str(e), "data": []},
-            status_code=500,
-        )
-
-
-@app.post("/orders/statistics")
-async def get_statistics_by_filter(filter_request: FilterRequest = Body(...)) -> Any:
-    """
-    Tính toán thống kê dựa trên bộ lọc từ FE.
-    
-    Body example:
-    {
-        "filters": {
-            "team": ["Team A", "Team B"],
-            "delivery_status": "Delivered",
-            "country": "US"
-        },
-        "date_range": {
-            "from": "01/03/2026",
-            "to": "31/03/2026"
-        },
-        "date_column": "created_at"
-    }
-    """
-    supabase = get_supabase()
-    
-    # Query để lấy dữ liệu cho statistics
-    stats_query = supabase.table("orders").select("total_vnd, total_amount_vnd, delivery_status, payment_status, team, country, marketing_staff, sale_staff, product, shift, check_result, created_at")
-    
-    # Áp dụng date range nếu có
-    if filter_request.date_range:
-        from_date = filter_request.date_range.get("from")
-        to_date = filter_request.date_range.get("to")
-        date_col = filter_request.date_column or "created_at"
-        
-        if from_date:
-            if date_col in TIMESTAMP_COLUMNS:
-                parsed_from = parse_date_param(from_date)
-                if parsed_from:
-                    day_start, _ = parsed_from
-                    stats_query = stats_query.gte(date_col, day_start)
-            elif date_col in DATE_COLUMNS:
-                date_str_from = parse_date_only(from_date)
-                if date_str_from:
-                    stats_query = stats_query.gte(date_col, date_str_from)
-        
-        if to_date:
-            if date_col in TIMESTAMP_COLUMNS:
-                parsed_to = parse_date_param(to_date)
-                if parsed_to:
-                    _, day_end = parsed_to
-                    stats_query = stats_query.lte(date_col, day_end)
-            elif date_col in DATE_COLUMNS:
-                date_str_to = parse_date_only(to_date)
-                if date_str_to:
-                    stats_query = stats_query.lte(date_col, date_str_to)
-    
-    # Áp dụng các filter khác
-    stats_query = apply_filters_to_query(stats_query, filter_request.filters)
-    
-    try:
-        # Lấy toàn bộ dữ liệu (giới hạn 50000 để tránh quá tải)
-        stats_result = stats_query.limit(50000).execute()
-        statistics = calculate_orders_statistics_detail(stats_result.data)
-        
-        return JSONResponse(
-            content={
-                "statistics": statistics,
-                "filters_applied": filter_request.filters,
-                "date_range": filter_request.date_range,
-                "total_records_analyzed": len(stats_result.data)
-            },
-            status_code=200,
-        )
-    except Exception as e:
-        return JSONResponse(
-            content={"error": str(e), "statistics": {}},
-            status_code=500,
-        )
-
-
-@app.get("/orders/statistics")
-async def get_statistics_by_query_params(request: Request) -> Any:
-    """
-    Tính toán thống kê dựa trên query params (tương tự endpoint /orders).
-    Ví dụ: /orders/statistics?created_at=01/03/2026&team=Team%20A&delivery_status=Delivered
-    """
-    supabase = get_supabase()
-    
-    # Query để lấy dữ liệu cho statistics
-    stats_query = supabase.table("orders").select("total_vnd, total_amount_vnd, delivery_status, payment_status, team, country, marketing_staff, sale_staff, product, shift, check_result, created_at")
-    
-    params = dict(request.query_params)
-    
-    for col, val in params.items():
-        if col not in ALL_ORDER_COLUMNS or not val:
-            continue
-        if col in TIMESTAMP_COLUMNS:
-            parsed = parse_date_param(val)
-            if parsed:
-                day_start, day_end = parsed
-                stats_query = stats_query.gte(col, day_start).lte(col, day_end)
-        elif col in DATE_COLUMNS:
-            date_str = parse_date_only(val)
-            if date_str:
-                stats_query = stats_query.eq(col, date_str)
-        else:
-            stats_query = stats_query.eq(col, val.strip())
-    
-    try:
-        # Lấy toàn bộ dữ liệu (giới hạn 50000 để tránh quá tải)
-        stats_result = stats_query.limit(50000).execute()
-        statistics = calculate_orders_statistics_detail(stats_result.data)
-        
-        return JSONResponse(
-            content={
-                "statistics": statistics,
-                "filters_applied": params,
-                "total_records_analyzed": len(stats_result.data)
-            },
-            status_code=200,
-        )
-    except Exception as e:
-        return JSONResponse(
-            content={"error": str(e), "statistics": {}},
             status_code=500,
         )
 
@@ -764,7 +749,7 @@ async def get_detail_reports(
 ) -> Any:
     """
     Lấy danh sách detail_reports với bộ lọc theo query params.
-    Các trường có thể filter: ten, ngay, ca, san_pham, thi_truong, cpqc, so_mess_cmt, nhan_su (danh sách tên cách nhau bởi dấu phẩy)
+    Các trường có thể filter: ten, ngay, ca, san_pham, thi_truong, team, nhan_su (danh sách tên cách nhau bởi dấu phẩy)
     Ví dụ: /detail_reports?nhan_su=Nguyễn Văn A,Trần Thị B&from_date=01/02/2026&to_date=10/02/2026
     """
     supabase = get_supabase()
@@ -774,19 +759,12 @@ async def get_detail_reports(
     params.pop("limit", None)
     params.pop("offset", None)
     params.pop("after_id", None)
-    
-    # Parse nhan_su thành list tên nhân viên
-    if "nhan_su" in params and params["nhan_su"]:
-        nhan_su_str = params.pop("nhan_su")
-        # Split bằng dấu phẩy và trim whitespace
-        ten_list = [name.strip() for name in nhan_su_str.split(",") if name.strip()]
-        if ten_list:
-            params["ten"] = ten_list
+    params = normalize_detail_reports_filters(params)
     
     # Extract date_range từ params
     from_date = params.pop("from_date", None)
     to_date = params.pop("to_date", None)
-    date_column = params.pop("date_column", "ngay")
+    date_column = params.pop("date_column", "date")
     
     date_range = None
     if from_date or to_date:
@@ -832,164 +810,37 @@ async def get_detail_reports(
         )
 
 
-@app.post("/detail_reports/statistics")
-async def get_detail_reports_statistics(filter_request: FilterRequest = Body(...)) -> Any:
+@app.get("/sales_reports")
+async def get_sales_reports(
+    request: Request,
+    limit: int = Query(100, ge=1, le=1000, description="Số bản ghi tối đa"),
+    offset: int = Query(0, ge=0, description="Vị trí bắt đầu"),
+    after_id: Optional[str] = Query(None, description="Cursor: id bản ghi cuối trang trước"),
+) -> Any:
     """
-    Tính toán thống kê từ bảng detail_reports dựa trên bộ lọc từ FE.
-    
-    Body example:
-    {
-        "filters": {
-            "nhan_su": "Nguyễn Văn A,Trần Thị B,Lê Văn C",
-            "ca": "Sáng"
-        },
-        "date_range": {
-            "from": "01/02/2026",
-            "to": "10/02/2026"
-        },
-        "date_column": "ngay"
-    }
+    Lấy danh sách sales_reports với bộ lọc theo query params.
+
+    Hỗ trợ các alias filter tương tự detail_reports:
+    - team: team/teamsale/teammkt
+    - nhân sự: ten/nhan_su/nhansu/marketing_staff/staff
+    - ca: ca/casle/camkt/shift
+    - sản phẩm: san_pham/product/productsale/productmkt/sanpham
+    - thị trường: thi_truong/market/marketsale/marketmkt/thitruong
+    - ngày: date/ngay/report_date
     """
     supabase = get_supabase()
-    
-    # Parse nhan_su thành list tên nhân viên trong filters
-    if filter_request.filters and "nhan_su" in filter_request.filters:
-        nhan_su_value = filter_request.filters.pop("nhan_su")
-        if isinstance(nhan_su_value, str):
-            # Split bằng dấu phẩy và trim whitespace
-            ten_list = [name.strip() for name in nhan_su_value.split(",") if name.strip()]
-            if ten_list:
-                filter_request.filters["ten"] = ten_list
-        elif isinstance(nhan_su_value, list):
-            # Nếu là list, join rồi split lại để handle ["A,B", "C"] → ["A", "B", "C"]
-            all_names = ",".join(str(item) for item in nhan_su_value)
-            ten_list = [name.strip() for name in all_names.split(",") if name.strip()]
-            if ten_list:
-                filter_request.filters["ten"] = ten_list
-    
-    stats_query = supabase.table("detail_reports").select("*")
-    
-    # Query orders table - CHỈ theo date range, không filter mapping
-    orders_query = supabase.table("orders").select("marketing_staff, total_vnd")
-    
-    # Áp dụng date range cho orders (sử dụng created_at)
-    if filter_request.date_range:
-        from_date = filter_request.date_range.get("from")
-        to_date = filter_request.date_range.get("to")
-        
-        if from_date:
-            parsed_from = parse_date_param(from_date)
-            if parsed_from:
-                day_start, _ = parsed_from
-                orders_query = orders_query.gte("created_at", day_start)
-        
-        if to_date:
-            parsed_to = parse_date_param(to_date)
-            if parsed_to:
-                _, day_end = parsed_to
-                orders_query = orders_query.lte("created_at", day_end)
-    
-    try:
-        stats_result = stats_query.limit(50000).execute()
-        orders_result = orders_query.limit(50000).execute()
-        
-        normalized_reports = [normalize_detail_reports_row(row) for row in stats_result.data]
-        filtered_reports = apply_detail_reports_filters_in_memory(
-            reports=normalized_reports,
-            filters=filter_request.filters,
-            date_range=filter_request.date_range,
-            date_column=filter_request.date_column or "ngay",
-        )
-        
-        # Extract unique staff names from filtered detail_reports
-        staff_names_in_report = list(set(row.get("ten") for row in filtered_reports if row.get("ten")))
-        
-        # Query orders count với same filters
-        orders_count_query = supabase.table("orders").select("id")
-        if filter_request.date_range:
-            from_date = filter_request.date_range.get("from")
-            to_date = filter_request.date_range.get("to")
-            if from_date:
-                parsed_from = parse_date_param(from_date)
-                if parsed_from:
-                    day_start, _ = parsed_from
-                    orders_count_query = orders_count_query.gte("created_at", day_start)
-            if to_date:
-                parsed_to = parse_date_param(to_date)
-                if parsed_to:
-                    _, day_end = parsed_to
-                    orders_count_query = orders_count_query.lte("created_at", day_end)
-        
-        orders_count_result = orders_count_query.limit(50000).execute()
-        orders_count_value = len(orders_count_result.data)
-        
-        statistics = calculate_detail_reports_statistics(
-            filtered_reports, 
-            filters=filter_request.filters,
-            orders_data=orders_result.data,
-            staff_names=staff_names_in_report,
-            orders_count=orders_count_value
-        )
-        
-        return JSONResponse(
-            content={
-                "statistics": statistics,
-                "filters_applied": filter_request.filters,
-                "date_range": filter_request.date_range,
-                "total_records_analyzed": len(filtered_reports)
-            },
-            status_code=200,
-        )
-    except Exception as e:
-        return JSONResponse(
-            content={"error": str(e), "statistics": {}},
-            status_code=500,
-        )
+    q = supabase.table("sales_reports").select(SALES_REPORTS_SELECT_COLUMNS)
 
-
-@app.get("/detail_reports/statistics")
-async def get_detail_reports_statistics_by_params(request: Request) -> Any:
-    """
-    Tính toán thống kê từ bảng detail_reports dựa trên query params.
-    Ví dụ: /detail_reports/statistics?nhan_su=Nguyễn Văn A,Trần Thị B&from_date=01/02/2026&to_date=10/02/2026&ca=Sáng
-    """
-    supabase = get_supabase()
-    
     params = dict(request.query_params)
-    
-    # Parse nhan_su thành list tên nhân viên
-    if "nhan_su" in params and params["nhan_su"]:
-        nhan_su_str = params.pop("nhan_su")
-        # Split bằng dấu phẩy và trim whitespace
-        ten_list = [name.strip() for name in nhan_su_str.split(",") if name.strip()]
-        if ten_list:
-            params["ten"] = ten_list
-    
-    # Parse nhan_su thành list tên nhân viên
-    if "nhan_su" in params and params["nhan_su"]:
-        nhan_su_str = params.pop("nhan_su")
-        # Split bằng dấu phẩy và trim whitespace
-        ten_list = [name.strip() for name in nhan_su_str.split(",") if name.strip()]
-        if ten_list:
-            params["ten"] = ten_list
-    
-    # Extract date_range từ params
+    params.pop("limit", None)
+    params.pop("offset", None)
+    params.pop("after_id", None)
+    params = normalize_sales_reports_filters(params)
+
     from_date = params.pop("from_date", None)
     to_date = params.pop("to_date", None)
     date_column = params.pop("date_column", "ngay")
-    marketing_staff = params.pop("marketing_staff", None)
-    
-    # Nếu có marketing_staff filter, thêm vào params để filter detail_reports theo "ten"
-    if marketing_staff:
-        params["ten"] = marketing_staff
-    
-    # Lưu lại filters (ca, san_pham, thi_truong) - chỉ những có giá trị không trống
-    breakdowns_filters = {
-        k: v for k, v in params.items() 
-        if k in ("ca", "san_pham", "thi_truong") 
-        and v and str(v).strip()  # Chỉ giữ giá trị không trống
-    }
-    
+
     date_range = None
     if from_date or to_date:
         date_range = {}
@@ -997,271 +848,41 @@ async def get_detail_reports_statistics_by_params(request: Request) -> Any:
             date_range["from"] = from_date
         if to_date:
             date_range["to"] = to_date
-    
-    stats_query = supabase.table("detail_reports").select("*")
-    
-    # Query orders table - filter theo marketing_staff + date range
-    orders_query = supabase.table("orders").select("marketing_staff, total_vnd")
-    
-    # Apply marketing_staff filter to orders
-    if marketing_staff:
-        orders_query = orders_query.eq("marketing_staff", marketing_staff.strip())
-    
-    # Apply date range filter to orders (theo created_at)
-    if from_date:
-        parsed_from = parse_date_param(from_date)
-        if parsed_from:
-            day_start, _ = parsed_from
-            # Filter by order_date (date column) instead of created_at
-            orders_query = orders_query.gte("order_date", day_start.split("T")[0])
-    if to_date:
-        parsed_to = parse_date_param(to_date)
-        if parsed_to:
-            _, day_end = parsed_to
-            # Filter by order_date (date column) instead of created_at
-            orders_query = orders_query.lte("order_date", day_end.split("T")[0])
-    
+
+    q = q.limit(50000)
+
     try:
-        stats_result = stats_query.limit(50000).execute()
-        orders_result = orders_query.limit(50000).execute()
-        
-        normalized_reports = [normalize_detail_reports_row(row) for row in stats_result.data]
-        filtered_reports = apply_detail_reports_filters_in_memory(
-            reports=normalized_reports,
-            filters=params,
-            date_range=date_range,
-            date_column=date_column,
-        )
-        
-        # Extract unique staff names từ filtered detail_reports
-        staff_names_in_report = list(set(row.get("ten") for row in filtered_reports if row.get("ten")))
-        
-        # Nếu có marketing_staff filter, thêm vào staff_names_in_report để xem data từ orders
-        if marketing_staff:
-            if marketing_staff.strip() not in staff_names_in_report:
-                staff_names_in_report.append(marketing_staff.strip())
-        
-        # Query orders count với same date_range
-        orders_count_query = supabase.table("orders").select("id")
-        if from_date:
-            parsed_from = parse_date_param(from_date)
-            if parsed_from:
-                day_start, _ = parsed_from
-                orders_count_query = orders_count_query.gte("created_at", day_start)
-        if to_date:
-            parsed_to = parse_date_param(to_date)
-            if parsed_to:
-                _, day_end = parsed_to
-                orders_count_query = orders_count_query.lte("created_at", day_end)
-        
-        orders_count_result = orders_count_query.limit(50000).execute()
-        orders_count_value = len(orders_count_result.data)
-        
-        statistics = calculate_detail_reports_statistics(
-            filtered_reports, 
-            filters=breakdowns_filters,
-            orders_data=orders_result.data,
-            staff_names=staff_names_in_report,
-            orders_count=orders_count_value,
-            marketing_staff=marketing_staff
-        )
-        
+        result = q.execute()
+        normalized = [normalize_sales_reports_row(row) for row in result.data]
+        filtered = apply_sales_reports_filters_in_memory(normalized, params, date_range, date_column)
+        filtered = sorted(filtered, key=lambda r: (str(r.get("id") or "")))
+
+        if after_id:
+            cursor = after_id.strip()
+            filtered = [row for row in filtered if str(row.get("id") or "") > cursor]
+            raw = filtered[:limit]
+        else:
+            start = offset * limit
+            raw = filtered[start : start + limit] if start < len(filtered) else []
+
+        data = []
+        for row in raw:
+            formatted_row = {}
+            for k, v in row.items():
+                mapped_key = SALES_REPORTS_RESPONSE_LABELS.get(k, k)
+                formatted_row[mapped_key] = v
+            data.append(formatted_row)
+
+        last_id = data[-1]["id"] if data else None
         return JSONResponse(
-            content={
-                "statistics": statistics,
-                "filters_applied": params,
-                "date_range": date_range,
-                "total_records_analyzed": len(filtered_reports)
-            },
+            content={"data": data, "count": len(data), "next_after_id": last_id},
             status_code=200,
         )
     except Exception as e:
         return JSONResponse(
-            content={"error": str(e), "statistics": {}},
+            content={"error": str(e), "data": []},
             status_code=500,
         )
-
-
-def calculate_detail_reports_statistics(reports: list, filters: dict = None, orders_data: list = None, staff_names: list = None, orders_count: int = 0, marketing_staff: str = None) -> dict:
-    """
-    Tính toán thống kê từ danh sách detail_reports.
-    - by_ten: luôn có, bao gồm count, total_mess_cmt, total_cpqc, total_vnd (từ orders)
-    - by_ngay: luôn có, bao gồm count, total_mess_cmt, total_cpqc theo ngày
-    - orders_data: danh sách orders để tính total_vnd
-    - staff_names: danh sách tên nhân viên từ detail_reports để filter orders
-    - orders_count: tổng số đơn hàng từ bảng orders theo các filter
-    """
-    if not reports:
-        # Even if no detail_reports, if marketing_staff was provided and has orders, include them
-        by_ten_empty = {}
-        if marketing_staff and orders_data:
-            # Create case-insensitive lookup for orders
-            staff_vnd = 0
-            staff_order_count = 0
-            for order in orders_data:
-                order_staff = order.get("marketing_staff")
-                if order_staff and str(order_staff).strip().lower() == marketing_staff.strip().lower():
-                    total_vnd = order.get("total_vnd") or 0
-                    try:
-                        staff_vnd += float(total_vnd)
-                    except (ValueError, TypeError):
-                        pass
-                    staff_order_count += 1
-            
-            # If we found orders for this staff, include them in the response
-            if staff_vnd > 0 or staff_order_count > 0:
-                by_ten_empty = {
-                    "count": {marketing_staff.strip(): 0},
-                    "total_mess_cmt": {marketing_staff.strip(): 0},
-                    "total_cpqc": {marketing_staff.strip(): 0},
-                    "gia_mess": {marketing_staff.strip(): 0},
-                    "total_vnd": {marketing_staff.strip(): round(staff_vnd, 2)},
-                    "total_sodon": {marketing_staff.strip(): staff_order_count}
-                }
-        
-        return {
-            "total_count": orders_count,
-            "total_cpqc": 0,
-            "total_mess_cmt": 0,
-            "average_mess_cmt": 0,
-            "gia_mess": 0,
-            "by_ten": by_ten_empty,
-            "by_ngay": {}
-        }
-    
-    total_records = len(reports)
-    
-    # Tính tổng CPQC
-    total_cpqc = 0
-    for row in reports:
-        cpqc_value = row.get("cpqc")
-        if cpqc_value:
-            try:
-                total_cpqc += float(cpqc_value)
-            except (ValueError, TypeError):
-                total_cpqc += 1
-    
-    # Tính tổng Số_Mess_Cmt
-    total_mess_cmt = sum(float(row.get("so_mess_cmt") or 0) for row in reports)
-    avg_mess_cmt = total_mess_cmt / total_records if total_records > 0 else 0
-    
-    # Tính total_vnd và total_sodon từ orders cho từng staff
-    staff_vnd_map = {}
-    staff_order_count_map = {}
-    if orders_data and staff_names:
-        # Create case-insensitive lookup for staff_names
-        staff_names_lower = {name.lower(): name for name in staff_names}
-        
-        for order in orders_data:
-            marketing_staff = order.get("marketing_staff")
-            # Chỉ tính cho staff có trong filtered detail_reports (case-insensitive match)
-            if marketing_staff:
-                marketing_staff_lower = str(marketing_staff).strip().lower()
-                if marketing_staff_lower in staff_names_lower:
-                    # Use original name from staff_names for consistency
-                    original_name = staff_names_lower[marketing_staff_lower]
-                    total_vnd = order.get("total_vnd") or 0
-                    try:
-                        vnd_value = float(total_vnd)
-                        staff_vnd_map[original_name] = staff_vnd_map.get(original_name, 0) + vnd_value
-                    except (ValueError, TypeError):
-                        pass
-                    # Đếm số đơn
-                    staff_order_count_map[original_name] = staff_order_count_map.get(original_name, 0) + 1
-    
-    # Helper tính breakdown theo field
-    def calculate_breakdown(reports_list, field_key, include_total_vnd=True, normalize_day=False):
-        count = {}
-        mess_cmt_sum = {}
-        cpqc_sum = {}
-        vnd_sum = {}
-        order_count_sum = {}
-        for row in reports_list:
-            key = row.get(field_key) or "Unknown"
-            if normalize_day:
-                key = normalize_date_value(key) or "Unknown"
-            count[key] = count.get(key, 0) + 1
-            mess_cmt = float(row.get("so_mess_cmt") or 0)
-            mess_cmt_sum[key] = mess_cmt_sum.get(key, 0) + mess_cmt
-            cpqc_value = row.get("cpqc")
-            if cpqc_value:
-                try:
-                    cpqc_val = float(cpqc_value)
-                    cpqc_sum[key] = cpqc_sum.get(key, 0) + cpqc_val
-                except (ValueError, TypeError):
-                    cpqc_sum[key] = cpqc_sum.get(key, 0) + 1
-            
-            # Thêm total_vnd và total_sodon từ maps
-            if include_total_vnd and key in staff_vnd_map:
-                vnd_sum[key] = staff_vnd_map[key]
-            if include_total_vnd and key in staff_order_count_map:
-                order_count_sum[key] = staff_order_count_map[key]
-        
-        result = {
-            "count": count,
-            "total_mess_cmt": {k: round(v, 2) for k, v in mess_cmt_sum.items()},
-            "total_cpqc": {k: round(v, 2) for k, v in cpqc_sum.items()},
-            "gia_mess": {
-                k: round((cpqc_sum.get(k, 0) / v), 6) if v else 0
-                for k, v in mess_cmt_sum.items()
-            }
-        }
-        
-        # Chỉ thêm total_vnd và total_sodon nếu có data từ orders
-        if include_total_vnd and vnd_sum:
-            result["total_vnd"] = {k: round(v, 2) for k, v in vnd_sum.items()}
-        if include_total_vnd and order_count_sum:
-            result["total_sodon"] = order_count_sum
-        
-        return result
-    
-    by_ngay_summary = calculate_breakdown(reports, "ngay", include_total_vnd=False, normalize_day=True)
-    by_ngay: Dict[str, Any] = {}
-    for day in by_ngay_summary.get("count", {}).keys():
-        day_reports = [
-            row for row in reports
-            if (normalize_date_value(row.get("ngay")) or "Unknown") == day
-        ]
-        day_total_mess = by_ngay_summary.get("total_mess_cmt", {}).get(day, 0)
-        day_total_cpqc = by_ngay_summary.get("total_cpqc", {}).get(day, 0)
-        by_ngay[day] = {
-            "count": by_ngay_summary.get("count", {}).get(day, 0),
-            "total_mess_cmt": day_total_mess,
-            "total_cpqc": day_total_cpqc,
-            "gia_mess": round((day_total_cpqc / day_total_mess), 6) if day_total_mess else 0,
-            "by_ten": calculate_breakdown(day_reports, "ten", include_total_vnd=True, normalize_day=False)
-        }
-
-    # Tính by_ten và by_ngay
-    by_ten_result = calculate_breakdown(reports, "ten", include_total_vnd=True, normalize_day=False)
-    
-    # Nếu marketing_staff filter được áp dụng, đảm bảo có staff này trong kết quả (ngay cả nếu không có detai_reports)
-    if marketing_staff and marketing_staff.strip() not in by_ten_result.get("count", {}):
-        staff_name = marketing_staff.strip()
-        # Thêm staff vào với dữ liệu từ orders
-        if staff_name in staff_vnd_map or staff_name in staff_order_count_map:
-            by_ten_result["count"][staff_name] = staff_order_count_map.get(staff_name, 0)
-            by_ten_result["total_mess_cmt"][staff_name] = 0
-            by_ten_result["total_cpqc"][staff_name] = 0
-            by_ten_result["gia_mess"][staff_name] = 0
-            if staff_name in staff_vnd_map:
-                if "total_vnd" not in by_ten_result:
-                    by_ten_result["total_vnd"] = {}
-                by_ten_result["total_vnd"][staff_name] = round(staff_vnd_map[staff_name], 2)
-            if staff_name in staff_order_count_map:
-                if "total_sodon" not in by_ten_result:
-                    by_ten_result["total_sodon"] = {}
-                by_ten_result["total_sodon"][staff_name] = staff_order_count_map[staff_name]
-    
-    return {
-        "total_count": orders_count,
-        "total_cpqc": round(total_cpqc, 2),
-        "total_mess_cmt": round(total_mess_cmt, 2),
-        "average_mess_cmt": round(avg_mess_cmt, 2),
-        "gia_mess": round((total_cpqc / total_mess_cmt), 6) if total_mess_cmt else 0,
-        "by_ten": by_ten_result,
-        "by_ngay": by_ngay
-    }
 
 
 @app.get("/")
@@ -1270,11 +891,8 @@ def root():
         "message": "Orders API",
         "docs": "/docs",
         "orders": "GET /orders?created_at=22/12/2026&city=Carson",
-        "orders_statistics_get": "GET /orders/statistics?created_at=01/03/2026&team=Team%20A",
-        "orders_statistics_post": "POST /orders/statistics với body JSON",
         "detail_reports": "GET /detail_reports?nhan_su=Nguyễn Văn A,Trần Thị B&ngay=01/02/2026",
-        "detail_reports_statistics_get": "GET /detail_reports/statistics?nhan_su=Nguyễn Văn A&ca=Sáng",
-        "detail_reports_statistics_post": "POST /detail_reports/statistics với body JSON"
+        "sales_reports": "GET /sales_reports?teamsale=Team%20A&from_date=01/02/2026&to_date=10/02/2026&date_column=date"
     }
 
 
