@@ -1,0 +1,42 @@
+# Các link mẫu để test API local
+
+## Base URL
+http://localhost:8000
+
+## 1. Test filter team=HCM (case-insensitive)
+http://localhost:8000/orders?from_date=01/01/2026&to_date=31/01/2026&team=HCM
+http://localhost:8000/orders?from_date=01/01/2026&to_date=31/01/2026&team=hcm
+http://localhost:8000/orders?from_date=01/01/2026&to_date=31/01/2026&team=Hcm
+
+## 2. Test filter shift (trực tiếp)
+http://localhost:8000/orders?from_date=01/01/2026&to_date=31/01/2026&shift=HCM
+http://localhost:8000/orders?from_date=01/01/2026&to_date=31/01/2026&shift=hcm
+
+## 3. Test không có filter team (để xem có dữ liệu không)
+http://localhost:8000/orders?from_date=01/01/2026&to_date=31/01/2026
+http://localhost:8000/orders?from_date=01/01/2026&to_date=31/01/2026&limit=10
+
+## 4. Test với nhiều giá trị team
+http://localhost:8000/orders?from_date=01/01/2026&to_date=31/01/2026&team=HCM,Morning,Evening
+
+## 5. Test detail_reports với team
+http://localhost:8000/detail_reports?team=Team%20A&limit=10
+http://localhost:8000/detail_reports?teammkt=Team%20A&limit=10
+
+## 6. Test sales_reports với team
+http://localhost:8000/sales_reports?team=Team%20A&limit=10
+http://localhost:8000/sales_reports?teamsale=Team%20A&limit=10
+
+## 7. Test export orders
+http://localhost:8000/orders/export?format=csv&from_date=01/01/2026&to_date=31/01/2026&team=HCM
+
+## 8. Test với các filter khác kết hợp
+http://localhost:8000/orders?from_date=01/01/2026&to_date=31/01/2026&team=HCM&delivery_status=Delivered
+http://localhost:8000/orders?from_date=01/01/2026&to_date=31/01/2026&team=HCM&payment_status=Paid
+
+## 9. Test API docs
+http://localhost:8000/docs
+http://localhost:8000/redoc
+
+## 10. Test root endpoint
+http://localhost:8000/

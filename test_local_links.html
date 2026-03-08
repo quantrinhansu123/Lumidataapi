@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test API Local - Orders API</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        h1 {
+            color: #333;
+            border-bottom: 3px solid #4CAF50;
+            padding-bottom: 10px;
+        }
+        h2 {
+            color: #555;
+            margin-top: 30px;
+            border-left: 4px solid #4CAF50;
+            padding-left: 10px;
+        }
+        .link-group {
+            background: white;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .link-item {
+            margin: 10px 0;
+            padding: 10px;
+            background: #f9f9f9;
+            border-left: 3px solid #4CAF50;
+        }
+        a {
+            color: #2196F3;
+            text-decoration: none;
+            word-break: break-all;
+            display: block;
+            padding: 5px;
+        }
+        a:hover {
+            background: #e3f2fd;
+            text-decoration: underline;
+        }
+        .test-btn {
+            display: inline-block;
+            margin-left: 10px;
+            padding: 5px 15px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            text-decoration: none;
+            font-size: 12px;
+        }
+        .test-btn:hover {
+            background: #45a049;
+        }
+        .result {
+            margin-top: 10px;
+            padding: 10px;
+            background: #f0f0f0;
+            border-radius: 3px;
+            display: none;
+        }
+        pre {
+            background: #282c34;
+            color: #abb2bf;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            font-size: 12px;
+        }
+        .base-url {
+            background: #e8f5e9;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧪 Test API Local - Orders API</h1>
+    
+    <div class="base-url">
+        🌐 Base URL: <code>http://localhost:8000</code>
+    </div>
+
+    <h2>1. Test filter team=HCM (case-insensitive)</h2>
+    <div class="link-group">
+        <div class="link-item">
+            <a href="http://localhost:8000/orders?from_date=01/01/2026&to_date=31/01/2026&team=HCM" target="_blank">
+                GET /orders?from_date=01/01/2026&to_date=31/01/2026&team=HCM
+            </a>
+        </div>
+        <div class="link-item">
+            <a href="http://localhost:8000/orders?from_date=01/01/2026&to_date=31/01/2026&team=hcm" target="_blank">
+                GET /orders?from_date=01/01/2026&to_date=31/01/2026&team=hcm
+            </a>
+        </div>
+        <div class="link-item">
+            <a href="http://localhost:8000/orders?from_date=01/01/2026&to_date=31/01/2026&team=Hcm" target="_blank">
+                GET /orders?from_date=01/01/2026&to_date=31/01/2026&team=Hcm
+            </a>
+        </div>
+    </div>
+
+    <h2>2. Test filter shift (trực tiếp)</h2>
+    <div class="link-group">
+        <div class="link-item">
+            <a href="http://localhost:8000/orders?from_date=01/01/2026&to_date=31/01/2026&shift=HCM" target="_blank">
+                GET /orders?from_date=01/01/2026&to_date=31/01/2026&shift=HCM
+            </a>
+        </div>
+        <div class="link-item">
+            <a href="http://localhost:8000/orders?from_date=01/01/2026&to_date=31/01/2026&shift=hcm" target="_blank">
+                GET /orders?from_date=01/01/2026&to_date=31/01/2026&shift=hcm
+            </a>
+        </div>
+    </div>
+
+    <h2>3. Test không có filter team (để xem có dữ liệu không)</h2>
+    <div class="link-group">
+        <div class="link-item">
+            <a href="http://localhost:8000/orders?from_date=01/01/2026&to_date=31/01/2026" target="_blank">
+                GET /orders?from_date=01/01/2026&to_date=31/01/2026
+            </a>
+        </div>
+        <div class="link-item">
+            <a href="http://localhost:8000/orders?from_date=01/01/2026&to_date=31/01/2026&limit=10" target="_blank">
+                GET /orders?from_date=01/01/2026&to_date=31/01/2026&limit=10
+            </a>
+        </div>
+    </div>
+
+    <h2>4. Test với nhiều giá trị team</h2>
+    <div class="link-group">
+        <div class="link-item">
+            <a href="http://localhost:8000/orders?from_date=01/01/2026&to_date=31/01/2026&team=HCM,Morning,Evening" target="_blank">
+                GET /orders?from_date=01/01/2026&to_date=31/01/2026&team=HCM,Morning,Evening
+            </a>
+        </div>
+    </div>
+
+    <h2>5. Test detail_reports với team</h2>
+    <div class="link-group">
+        <div class="link-item">
+            <a href="http://localhost:8000/detail_reports?team=Team%20A&limit=10" target="_blank">
+                GET /detail_reports?team=Team A&limit=10
+            </a>
+        </div>
+        <div class="link-item">
+            <a href="http://localhost:8000/detail_reports?teammkt=Team%20A&limit=10" target="_blank">
+                GET /detail_reports?teammkt=Team A&limit=10
+            </a>
+        </div>
+    </div>
+
+    <h2>6. Test sales_reports với team</h2>
+    <div class="link-group">
+        <div class="link-item">
+            <a href="http://localhost:8000/sales_reports?team=Team%20A&limit=10" target="_blank">
+                GET /sales_reports?team=Team A&limit=10
+            </a>
+        </div>
+        <div class="link-item">
+            <a href="http://localhost:8000/sales_reports?teamsale=Team%20A&limit=10" target="_blank">
+                GET /sales_reports?teamsale=Team A&limit=10
+            </a>
+        </div>
+    </div>
+
+    <h2>7. Test export orders</h2>
+    <div class="link-group">
+        <div class="link-item">
+            <a href="http://localhost:8000/orders/export?format=csv&from_date=01/01/2026&to_date=31/01/2026&team=HCM" target="_blank">
+                GET /orders/export?format=csv&from_date=01/01/2026&to_date=31/01/2026&team=HCM
+            </a>
+        </div>
+    </div>
+
+    <h2>8. Test với các filter khác kết hợp</h2>
+    <div class="link-group">
+        <div class="link-item">
+            <a href="http://localhost:8000/orders?from_date=01/01/2026&to_date=31/01/2026&team=HCM&delivery_status=Delivered" target="_blank">
+                GET /orders?from_date=01/01/2026&to_date=31/01/2026&team=HCM&delivery_status=Delivered
+            </a>
+        </div>
+        <div class="link-item">
+            <a href="http://localhost:8000/orders?from_date=01/01/2026&to_date=31/01/2026&team=HCM&payment_status=Paid" target="_blank">
+                GET /orders?from_date=01/01/2026&to_date=31/01/2026&team=HCM&payment_status=Paid
+            </a>
+        </div>
+    </div>
+
+    <h2>9. Test API Documentation</h2>
+    <div class="link-group">
+        <div class="link-item">
+            <a href="http://localhost:8000/docs" target="_blank">
+                📚 Swagger UI: http://localhost:8000/docs
+            </a>
+        </div>
+        <div class="link-item">
+            <a href="http://localhost:8000/redoc" target="_blank">
+                📖 ReDoc: http://localhost:8000/redoc
+            </a>
+        </div>
+    </div>
+
+    <h2>10. Test root endpoint</h2>
+    <div class="link-group">
+        <div class="link-item">
+            <a href="http://localhost:8000/" target="_blank">
+                GET /
+            </a>
+        </div>
+    </div>
+
+    <script>
+        // Auto test function (optional)
+        async function testAPI(url) {
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+                console.log('Response:', data);
+                return data;
+            } catch (error) {
+                console.error('Error:', error);
+                return null;
+            }
+        }
+
+        // Add click handlers to test buttons if needed
+        document.querySelectorAll('a').forEach(link => {
+            link.addEventListener('click', function(e) {
+                console.log('Testing:', this.href);
+            });
+        });
+    </script>
+</body>
+</html>

@@ -107,9 +107,10 @@ RESPONSE_LABELS = {
 }
 
 # Mapping từ parameter name sang column name trong DB
-# Ví dụ: ?team=xxx sẽ filter cột shift trong DB
+# Lưu ý: team parameter map tới cột 'team' trong DB (không phải 'shift')
+# Nếu muốn filter theo shift, dùng parameter 'shift' trực tiếp
 PARAM_TO_COLUMN_MAPPING = {
-    "team": "shift",  # Parameter 'team' map to column 'shift'
+    # Không cần mapping vì team và shift đều có cột tương ứng trong DB
 }
 
 # Các cột của bảng detail_reports
@@ -666,6 +667,21 @@ async def fetch_filtered_orders(
     params.pop("date_column", None)
     params.pop("format", None)  # Bỏ format nếu có
 
+    # Tách text filters (team, shift) để filter case-insensitive trong memory
+    # Chỉ tách team và shift vì đây là các cột thường gặp vấn đề case-sensitive
+    text_filters = {}
+    non_text_params = {}
+    for param_name, val in params.items():
+        col = PARAM_TO_COLUMN_MAPPING.get(param_name, param_name)
+        # Chỉ filter case-insensitive cho team và shift
+        if param_name in ["team", "shift"]:
+            if isinstance(val, str) and "," in val:
+                text_filters[col] = [v.strip().lower() for v in val.split(",") if v.strip()]
+            elif val:
+                text_filters[col] = [str(val).strip().lower()]
+        else:
+            non_text_params[param_name] = val
+
     # Áp dụng date range nếu có
     if from_date or to_date:
         if date_column in TIMESTAMP_COLUMNS:
@@ -689,8 +705,8 @@ async def fetch_filtered_orders(
                 if date_str_to:
                     q = q.lte(date_column, date_str_to)
 
-    # Áp dụng các filter khác (hỗ trợ nhiều giá trị: a,b,c)
-    q = apply_filters_to_query(q, params)
+    # Áp dụng các filter khác (không bao gồm text filters đã tách ra)
+    q = apply_filters_to_query(q, non_text_params)
 
     # Lấy tất cả dữ liệu (không giới hạn) nếu không có limit
     batch_size = 10000
@@ -738,8 +754,8 @@ async def fetch_filtered_orders(
                         if date_str_to:
                             q_batch = q_batch.lte(date_column, date_str_to)
             
-            # Áp dụng lại các filter khác
-            q_batch = apply_filters_to_query(q_batch, params)
+            # Áp dụng lại các filter khác (không bao gồm text filters)
+            q_batch = apply_filters_to_query(q_batch, non_text_params)
             
             # Thêm cursor và order
             if current_id:
@@ -765,6 +781,20 @@ async def fetch_filtered_orders(
     # Sắp xếp theo id để đảm bảo thứ tự
     if not after_id and not limit:
         all_data = sorted(all_data, key=lambda r: (r.get("id") or ""))
+    
+    # Áp dụng case-insensitive filter trong memory cho text filters
+    if text_filters:
+        filtered_data = []
+        for row in all_data:
+            match = True
+            for col, filter_values in text_filters.items():
+                row_value = str(row.get(col, "")).strip().lower()
+                if not any(fv == row_value for fv in filter_values):
+                    match = False
+                    break
+            if match:
+                filtered_data.append(row)
+        all_data = filtered_data
     
     # Áp dụng offset nếu có
     if offset > 0 and not after_id:
