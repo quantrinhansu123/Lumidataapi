@@ -714,13 +714,16 @@ async def fetch_filtered_orders(
     all_data = []
     
     if limit:
-        # Có limit: chỉ lấy đúng số lượng yêu cầu
+        # Có limit: lấy nhiều hơn một chút để kiểm tra xem còn data không
+        # Lấy limit + 1 để biết có data tiếp theo không
+        fetch_limit = limit + 1
+        
         if after_id:
-            q_cursor = q.gt("id", after_id.strip()).order("id", desc=False).limit(limit)
+            q_cursor = q.gt("id", after_id.strip()).order("id", desc=False).limit(fetch_limit)
             result = q_cursor.execute()
             all_data = result.data
         else:
-            q_limit = q.order("id", desc=False).limit(limit).offset(offset)
+            q_limit = q.order("id", desc=False).limit(fetch_limit).offset(offset)
             result = q_limit.execute()
             all_data = result.data
     else:
@@ -800,13 +803,27 @@ async def fetch_filtered_orders(
     if offset > 0 and not after_id:
         all_data = all_data[offset:]
     
+    # Nếu có limit và lấy nhiều hơn limit, cắt bớt và đánh dấu còn data
+    has_more = False
+    if limit:
+        # Nếu lấy được nhiều hơn limit (từ DB hoặc sau filter), có thể còn data
+        if len(all_data) > limit:
+            has_more = True
+            all_data = all_data[:limit]
+        # Nếu lấy đúng limit và có after_id, có thể còn data (cần kiểm tra thêm)
+        elif len(all_data) == limit and after_id:
+            # Đã lấy đúng limit với cursor, có thể còn data
+            has_more = True
+    
     # Map sang response labels
     data = [
         {RESPONSE_LABELS[k]: v for k, v in row.items() if k in RESPONSE_LABELS}
         for row in all_data
     ]
     
-    return data
+    # Trả về tuple (data, has_more) để nhất quán
+    # has_more chỉ có ý nghĩa khi có limit
+    return data, has_more if limit else False
 
 
 @app.get("/orders")
@@ -842,7 +859,7 @@ async def get_orders(
     total_amount_vnd, tracking_code, team, delivery_status, payment_status, delivery_staff, check_result, shift
     """
     try:
-        data = await fetch_filtered_orders(
+        result = await fetch_filtered_orders(
             request=request,
             limit=limit,
             offset=offset,
@@ -851,12 +868,28 @@ async def get_orders(
             to_date=to_date,
             date_column=date_column,
         )
+        
+        # Unpack result (data, has_more)
+        if isinstance(result, tuple):
+            data, has_more = result
+        else:
+            data = result
+            has_more = False
+        
+        # Tính next_after_id: nếu có limit và (có has_more hoặc len(data) == limit)
         last_id = data[-1]["id"] if data else None
+        next_after_id = None
+        if limit and data:
+            # Nếu có has_more hoặc len(data) == limit, có thể còn data
+            if has_more or len(data) >= limit:
+                next_after_id = last_id
+        
         return JSONResponse(
             content={
                 "data": data,
                 "count": len(data),
-                "next_after_id": last_id if limit and len(data) == limit else None
+                "next_after_id": next_after_id,
+                "has_more": has_more if limit else None
             },
             status_code=200,
         )
@@ -889,7 +922,7 @@ async def export_orders(
     """
     try:
         # Lấy dữ liệu đã lọc (không giới hạn)
-        data = await fetch_filtered_orders(
+        result = await fetch_filtered_orders(
             request=request,
             limit=None,
             offset=0,
@@ -898,6 +931,12 @@ async def export_orders(
             to_date=to_date,
             date_column=date_column,
         )
+        
+        # Unpack result (data, has_more) - với limit=None, has_more sẽ là False
+        if isinstance(result, tuple):
+            data, _ = result
+        else:
+            data = result
         
         if not data:
             return JSONResponse(
