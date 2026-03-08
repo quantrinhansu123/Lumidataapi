@@ -195,7 +195,13 @@ SALES_REPORTS_RESPONSE_LABELS = {
     "Tên": "ten",
     "Ngày": "date",
     "Sản_phẩm": "san_pham",
-    "Thị_trường": "thi_truong"
+    "Thị_trường": "thi_truong",
+    # Các trường tính toán mới
+    "order_count": "order_count",
+    "order_cancel_count_actual": "order_cancel_count_actual",
+    "revenue_actual": "revenue_actual",
+    "revenue_cancel_actual": "revenue_cancel_actual",
+    "order_success_count": "order_success_count",
 }
 
 SALES_REPORTS_CANONICAL_COLUMNS = {
@@ -1115,10 +1121,21 @@ async def get_sales_reports(
             start = offset * limit
             raw = filtered[start : start + limit] if start < len(filtered) else []
 
+        # Các trường cần loại bỏ khỏi response
+        EXCLUDED_FIELDS = {
+            "created_at", "created_by", "updated_at", "updated_by",
+            "id_ns", "new_customer", "old_customer", "cross_sale",
+            "customer_classification", "customer_old", "customer_new",
+            "id_feedback", "id_mess_count", "firebase_id"
+        }
+        
         data = []
         for row in raw:
             formatted_row = {}
             for k, v in row.items():
+                # Bỏ qua các trường không cần thiết
+                if k in EXCLUDED_FIELDS:
+                    continue
                 mapped_key = SALES_REPORTS_RESPONSE_LABELS.get(k, k)
                 formatted_row[mapped_key] = v
             data.append(formatted_row)
