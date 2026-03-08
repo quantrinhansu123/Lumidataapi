@@ -704,53 +704,89 @@ async def get_orders(
     q = apply_filters_to_query(q, params)
 
     # Lấy tất cả dữ liệu (không giới hạn) nếu không có limit
-    # Supabase có giới hạn mặc định 1000, nên ta phải query nhiều lần
+    # Supabase có giới hạn mặc định 1000, nên ta phải query nhiều lần bằng cursor
     batch_size = 1000  # Kích thước mỗi batch
     
     try:
         all_data = []
         
-        if after_id:
-            # Phân trang với cursor
-            if limit:
+        if limit:
+            # Có limit: chỉ lấy đúng số lượng yêu cầu
+            if after_id:
+                # Phân trang với cursor
                 q_cursor = q.gt("id", after_id.strip()).order("id", desc=False).limit(limit)
                 result = q_cursor.execute()
                 all_data = result.data
             else:
-                # Lấy tất cả từ cursor
-                current_after_id = after_id.strip()
-                while True:
-                    q_batch = q.gt("id", current_after_id).order("id", desc=False).limit(batch_size)
-                    result = q_batch.execute()
-                    batch_data = result.data
-                    if not batch_data:
-                        break
-                    all_data.extend(batch_data)
-                    if len(batch_data) < batch_size:
-                        break
-                    current_after_id = batch_data[-1].get("id")
-        else:
-            # Lấy tất cả hoặc theo limit
-            if limit:
-                q_limit = q.limit(limit).offset(offset)
+                # Dùng offset
+                q_limit = q.order("id", desc=False).limit(limit).offset(offset)
                 result = q_limit.execute()
                 all_data = result.data
-            else:
-                # Lấy tất cả bằng cách query nhiều lần
-                current_offset = offset
-                while True:
-                    q_batch = q.limit(batch_size).offset(current_offset)
-                    result = q_batch.execute()
-                    batch_data = result.data
-                    if not batch_data:
-                        break
-                    all_data.extend(batch_data)
-                    if len(batch_data) < batch_size:
-                        break
-                    current_offset += batch_size
+        else:
+            # Không có limit: lấy TẤT CẢ bằng cursor-based pagination
+            current_id = after_id.strip() if after_id else None
+            max_iterations = 10000  # Giới hạn số lần query để tránh vòng lặp vô hạn
+            
+            for iteration in range(max_iterations):
+                # Build query mới mỗi lần để đảm bảo filter được áp dụng đúng
+                q_batch = supabase.table("orders").select(SELECT_COLUMNS)
+                
+                # Áp dụng lại tất cả filters
+                if from_date or to_date:
+                    if date_column in TIMESTAMP_COLUMNS:
+                        if from_date:
+                            parsed_from = parse_date_param(from_date)
+                            if parsed_from:
+                                day_start, _ = parsed_from
+                                q_batch = q_batch.gte(date_column, day_start)
+                        if to_date:
+                            parsed_to = parse_date_param(to_date)
+                            if parsed_to:
+                                _, day_end = parsed_to
+                                q_batch = q_batch.lte(date_column, day_end)
+                    elif date_column in DATE_COLUMNS:
+                        if from_date:
+                            date_str_from = parse_date_only(from_date)
+                            if date_str_from:
+                                q_batch = q_batch.gte(date_column, date_str_from)
+                        if to_date:
+                            date_str_to = parse_date_only(to_date)
+                            if date_str_to:
+                                q_batch = q_batch.lte(date_column, date_str_to)
+                
+                # Áp dụng lại các filter khác
+                q_batch = apply_filters_to_query(q_batch, params)
+                
+                # Thêm cursor và order
+                if current_id:
+                    q_batch = q_batch.gt("id", current_id)
+                q_batch = q_batch.order("id", desc=False).limit(batch_size)
+                
+                result = q_batch.execute()
+                batch_data = result.data
+                
+                if not batch_data:
+                    break
+                
+                all_data.extend(batch_data)
+                
+                # Nếu số lượng ít hơn batch_size, đã hết dữ liệu
+                if len(batch_data) < batch_size:
+                    break
+                
+                # Lấy ID của bản ghi cuối để query tiếp
+                last_row = batch_data[-1]
+                current_id = last_row.get("id")
+                if not current_id:
+                    break
         
-        # Sắp xếp theo id để đảm bảo thứ tự
-        all_data = sorted(all_data, key=lambda r: (r.get("id") or ""))
+        # Sắp xếp theo id để đảm bảo thứ tự (nếu cần)
+        if not after_id and not limit:
+            all_data = sorted(all_data, key=lambda r: (r.get("id") or ""))
+        
+        # Áp dụng offset nếu có (chỉ khi không dùng cursor)
+        if offset > 0 and not after_id:
+            all_data = all_data[offset:]
         
         data = [
             {RESPONSE_LABELS[k]: v for k, v in row.items() if k in RESPONSE_LABELS}
