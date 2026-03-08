@@ -91,9 +91,19 @@ export default async function handler(
       });
     }
 
-    // Fetch all orders (with pagination to avoid timeout)
-    console.log('Fetching orders...');
-    const allOrders = await fetchAllOrders(supabase, 10000);
+    // Calculate date range from sales reports for optimized fetching
+    const dates = salesReports
+      .map((sr: any) => normalizeDate(sr.date || sr.ngay || sr.Ngày))
+      .filter((d: string | null): d is string => d !== null)
+      .sort();
+
+    const dateFilter = dates.length > 0
+      ? { from: dates[0], to: dates[dates.length - 1] }
+      : undefined;
+
+    // Fetch orders (with date filter if available for better performance)
+    console.log('Fetching orders...', dateFilter ? `Date range: ${dateFilter.from} to ${dateFilter.to}` : 'All dates');
+    const allOrders = await fetchAllOrders(supabase, 10000, dateFilter);
     console.log(`Fetched ${allOrders.length} orders`);
 
     // Calculate order_count for each sales report

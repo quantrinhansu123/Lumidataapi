@@ -133,20 +133,31 @@ export function orderMatchesSalesReport(
 
 /**
  * Fetch all orders with pagination
+ * Optionally filter by date range for better performance
  */
 export async function fetchAllOrders(
   supabase: any,
-  batchSize: number = 10000
+  batchSize: number = 10000,
+  dateFilter?: { from?: string; to?: string }
 ): Promise<any[]> {
   const allOrders: any[] = [];
   let offset = 0;
   let hasMore = true;
 
   while (hasMore) {
-    const { data, error } = await supabase
+    let query = supabase
       .from('orders')
-      .select('id, sale_staff, order_date, shift, product, country')
-      .range(offset, offset + batchSize - 1);
+      .select('id, sale_staff, order_date, shift, product, country');
+
+    // Apply date filter if provided
+    if (dateFilter?.from) {
+      query = query.gte('order_date', dateFilter.from);
+    }
+    if (dateFilter?.to) {
+      query = query.lte('order_date', dateFilter.to);
+    }
+
+    const { data, error } = await query.range(offset, offset + batchSize - 1);
 
     if (error) {
       throw new Error(`Error fetching orders: ${error.message}`);
