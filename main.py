@@ -704,8 +704,8 @@ async def get_orders(
     q = apply_filters_to_query(q, params)
 
     # Lấy tất cả dữ liệu (không giới hạn) nếu không có limit
-    # Supabase có giới hạn mặc định 1000, nên ta phải query nhiều lần bằng cursor
-    batch_size = 1000  # Kích thước mỗi batch
+    # Supabase có giới hạn mặc định, nên ta phải query nhiều lần bằng cursor
+    batch_size = 10000  # Kích thước mỗi batch (tăng lên để giảm số lần query)
     
     try:
         all_data = []
