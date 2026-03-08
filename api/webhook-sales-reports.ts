@@ -1,8 +1,9 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
 import {
-  orderMatchesSalesReport,
   fetchAllOrders,
+  calculateOrderStatistics,
+  normalizeDate,
 } from './utils';
 
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
@@ -63,23 +64,28 @@ export default async function handler(
     // Get the sales report record
     const salesReport = record;
 
+    // Calculate date range for optimized fetching
+    const reportDate = normalizeDate(salesReport.date || salesReport.ngay || salesReport.Ngày);
+    const dateFilter = reportDate ? { from: reportDate, to: reportDate } : undefined;
+
     // Fetch all orders (with pagination to avoid timeout)
     console.log('Fetching orders for webhook...');
-    const allOrders = await fetchAllOrders(supabase, 10000);
+    const allOrders = await fetchAllOrders(supabase, 10000, dateFilter);
     console.log(`Fetched ${allOrders.length} orders`);
 
-    // Count matching orders
-    let orderCount = 0;
-    for (const order of allOrders) {
-      if (orderMatchesSalesReport(order, salesReport)) {
-        orderCount++;
-      }
-    }
+    // Calculate all statistics
+    const stats = calculateOrderStatistics(allOrders, salesReport);
 
-    // Update the sales report with the calculated order_count
+    // Update the sales report with all calculated values
     const { error: updateError } = await supabase
       .from('sales_reports')
-      .update({ order_count: orderCount })
+      .update({
+        order_count: stats.order_count,
+        order_cancel_count_actual: stats.order_cancel_count_actual,
+        revenue_actual: stats.revenue_actual,
+        revenue_cancel_actual: stats.revenue_cancel_actual,
+        order_success_count: stats.order_success_count,
+      })
       .eq('id', salesReport.id);
 
     if (updateError) {
@@ -88,14 +94,18 @@ export default async function handler(
 
     return res.status(200).json({
       success: true,
-      message: `Successfully calculated order_count for record ${salesReport.id}`,
+      message: `Successfully calculated statistics for record ${salesReport.id}`,
       recordId: salesReport.id,
       name: salesReport.name || salesReport.ten || salesReport.Tên,
       date: salesReport.date || salesReport.ngay || salesReport.Ngày,
       shift: salesReport.shift || salesReport.ca || salesReport.casle || '',
       product: salesReport.product || salesReport.san_pham || salesReport.Sản_phẩm || '',
       market: salesReport.market || salesReport.thi_truong || salesReport.Thị_trường || '',
-      order_count: orderCount,
+      order_count: stats.order_count,
+      order_cancel_count_actual: stats.order_cancel_count_actual,
+      revenue_actual: stats.revenue_actual,
+      revenue_cancel_actual: stats.revenue_cancel_actual,
+      order_success_count: stats.order_success_count,
     });
   } catch (error: any) {
     console.error('Error in webhook-sales-reports:', error);

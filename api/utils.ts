@@ -147,7 +147,7 @@ export async function fetchAllOrders(
   while (hasMore) {
     let query = supabase
       .from('orders')
-      .select('id, sale_staff, order_date, shift, product, country');
+      .select('id, sale_staff, order_date, shift, product, country, check_result, total_amount_vnd');
 
     // Apply date filter if provided
     if (dateFilter?.from) {
@@ -173,4 +173,51 @@ export async function fetchAllOrders(
   }
 
   return allOrders;
+}
+
+/**
+ * Calculate order statistics for a sales report
+ * Returns: order_count, order_cancel_count_actual, revenue_actual, revenue_cancel_actual, order_success_count
+ */
+export function calculateOrderStatistics(
+  orders: any[],
+  salesReport: any
+): {
+  order_count: number;
+  order_cancel_count_actual: number;
+  revenue_actual: number;
+  revenue_cancel_actual: number;
+  order_success_count: number;
+} {
+  let orderCount = 0;
+  let orderCancelCount = 0;
+  let revenueActual = 0;
+  let revenueCancelActual = 0;
+
+  for (const order of orders) {
+    if (orderMatchesSalesReport(order, salesReport)) {
+      orderCount++;
+      
+      // Calculate revenue
+      const amount = parseFloat(order.total_amount_vnd) || 0;
+      revenueActual += amount;
+
+      // Check if order is cancelled
+      const checkResult = normalizeString(order.check_result);
+      if (checkResult === 'hủy') {
+        orderCancelCount++;
+        revenueCancelActual += amount;
+      }
+    }
+  }
+
+  const orderSuccessCount = orderCount - orderCancelCount;
+
+  return {
+    order_count: orderCount,
+    order_cancel_count_actual: orderCancelCount,
+    revenue_actual: revenueActual,
+    revenue_cancel_actual: revenueCancelActual,
+    order_success_count: orderSuccessCount,
+  };
 }
