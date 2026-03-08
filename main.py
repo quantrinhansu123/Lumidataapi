@@ -3,13 +3,15 @@ Orders API - Query orders from Subabase with GET params.
 Example: GET /orders?created_at=22/12/2026&city=Carson
 """
 import os
+import csv
+import io
 from datetime import datetime
 from typing import Any, Optional, Dict, List
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Query, Request, Body
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from supabase import create_client, Client
 from pydantic import BaseModel
 
@@ -642,38 +644,16 @@ def apply_filters_to_query(query, filters: dict):
     return query
 
 
-@app.get("/orders")
-async def get_orders(
+async def fetch_filtered_orders(
     request: Request,
-    limit: Optional[int] = Query(None, ge=1, description="Số bản ghi tối đa (không truyền = lấy tất cả)"),
-    offset: int = Query(0, ge=0, description="Vị trí bắt đầu"),
-    after_id: Optional[str] = Query(None, description="Cursor: id bản ghi cuối trang trước (trang sau = after_id này)"),
-    from_date: Optional[str] = Query(None, description="Ngày bắt đầu (dd/mm/yyyy)"),
-    to_date: Optional[str] = Query(None, description="Ngày kết thúc (dd/mm/yyyy)"),
-    date_column: str = Query("order_date", description="Cột date để filter (order_date, created_at, ...)"),
-) -> Any:
-    """
-    Lấy danh sách orders với bộ lọc theo query params.
-    Mặc định lấy TẤT CẢ dữ liệu thỏa điều kiện filter (không giới hạn).
-    Nếu truyền limit thì sẽ giới hạn số lượng.
-    
-    Bộ lọc hỗ trợ:
-    - team: Lọc theo ca làm việc (cột shift trong DB)
-    - delivery_staff: Lọc theo nhân viên giao hàng (hỗ trợ nhiều giá trị: delivery_staff=Name1,Name2)
-    - delivery_status: Lọc theo trạng thái giao hàng (hỗ trợ nhiều giá trị)
-    - payment_status: Lọc theo trạng thái thanh toán (hỗ trợ nhiều giá trị)
-    - country, product, check_result
-    - marketing_staff, sale_staff, cskh
-    - from_date, to_date: Khoảng thời gian (dd/mm/yyyy)
-    - date_column: Cột date để lọc (mặc định: order_date)
-    
-    Ví dụ: 
-    - /orders?delivery_staff=Nguyễn Văn A&delivery_status=Delivered
-    - /orders?team=Morning&delivery_status=Delivered&payment_status=Paid&delivery_staff=Staff1,Staff2&from_date=01/01/2026&to_date=31/01/2026
-    
-    Response bao gồm: id, nhanvien_maketing, nhanvien_sale, ngaytao, tongtien, order_date, country, product, 
-    total_amount_vnd, tracking_code, team, delivery_status, payment_status, delivery_staff, check_result, shift
-    """
+    limit: Optional[int] = None,
+    offset: int = 0,
+    after_id: Optional[str] = None,
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None,
+    date_column: str = "order_date",
+) -> List[dict]:
+    """Helper function để lấy dữ liệu orders đã lọc (tái sử dụng logic từ get_orders)."""
     supabase = get_supabase()
     q = supabase.table("orders").select(SELECT_COLUMNS)
 
@@ -684,6 +664,7 @@ async def get_orders(
     params.pop("from_date", None)
     params.pop("to_date", None)
     params.pop("date_column", None)
+    params.pop("format", None)  # Bỏ format nếu có
 
     # Áp dụng date range nếu có
     if from_date or to_date:
@@ -712,94 +693,134 @@ async def get_orders(
     q = apply_filters_to_query(q, params)
 
     # Lấy tất cả dữ liệu (không giới hạn) nếu không có limit
-    # Supabase có giới hạn mặc định, nên ta phải query nhiều lần bằng cursor
-    batch_size = 10000  # Kích thước mỗi batch (tăng lên để giảm số lần query)
+    batch_size = 10000
     
-    try:
-        all_data = []
-        
-        if limit:
-            # Có limit: chỉ lấy đúng số lượng yêu cầu
-            if after_id:
-                # Phân trang với cursor
-                q_cursor = q.gt("id", after_id.strip()).order("id", desc=False).limit(limit)
-                result = q_cursor.execute()
-                all_data = result.data
-            else:
-                # Dùng offset
-                q_limit = q.order("id", desc=False).limit(limit).offset(offset)
-                result = q_limit.execute()
-                all_data = result.data
+    all_data = []
+    
+    if limit:
+        # Có limit: chỉ lấy đúng số lượng yêu cầu
+        if after_id:
+            q_cursor = q.gt("id", after_id.strip()).order("id", desc=False).limit(limit)
+            result = q_cursor.execute()
+            all_data = result.data
         else:
-            # Không có limit: lấy TẤT CẢ bằng cursor-based pagination
-            current_id = after_id.strip() if after_id else None
-            max_iterations = 10000  # Giới hạn số lần query để tránh vòng lặp vô hạn
+            q_limit = q.order("id", desc=False).limit(limit).offset(offset)
+            result = q_limit.execute()
+            all_data = result.data
+    else:
+        # Không có limit: lấy TẤT CẢ bằng cursor-based pagination
+        current_id = after_id.strip() if after_id else None
+        max_iterations = 10000
+        
+        for iteration in range(max_iterations):
+            q_batch = supabase.table("orders").select(SELECT_COLUMNS)
             
-            for iteration in range(max_iterations):
-                # Build query mới mỗi lần để đảm bảo filter được áp dụng đúng
-                q_batch = supabase.table("orders").select(SELECT_COLUMNS)
-                
-                # Áp dụng lại tất cả filters
-                if from_date or to_date:
-                    if date_column in TIMESTAMP_COLUMNS:
-                        if from_date:
-                            parsed_from = parse_date_param(from_date)
-                            if parsed_from:
-                                day_start, _ = parsed_from
-                                q_batch = q_batch.gte(date_column, day_start)
-                        if to_date:
-                            parsed_to = parse_date_param(to_date)
-                            if parsed_to:
-                                _, day_end = parsed_to
-                                q_batch = q_batch.lte(date_column, day_end)
-                    elif date_column in DATE_COLUMNS:
-                        if from_date:
-                            date_str_from = parse_date_only(from_date)
-                            if date_str_from:
-                                q_batch = q_batch.gte(date_column, date_str_from)
-                        if to_date:
-                            date_str_to = parse_date_only(to_date)
-                            if date_str_to:
-                                q_batch = q_batch.lte(date_column, date_str_to)
-                
-                # Áp dụng lại các filter khác
-                q_batch = apply_filters_to_query(q_batch, params)
-                
-                # Thêm cursor và order
-                if current_id:
-                    q_batch = q_batch.gt("id", current_id)
-                q_batch = q_batch.order("id", desc=False).limit(batch_size)
-                
-                result = q_batch.execute()
-                batch_data = result.data
-                
-                if not batch_data:
-                    break
-                
-                all_data.extend(batch_data)
-                
-                # Nếu số lượng ít hơn batch_size, đã hết dữ liệu
-                if len(batch_data) < batch_size:
-                    break
-                
-                # Lấy ID của bản ghi cuối để query tiếp
-                last_row = batch_data[-1]
-                current_id = last_row.get("id")
-                if not current_id:
-                    break
-        
-        # Sắp xếp theo id để đảm bảo thứ tự (nếu cần)
-        if not after_id and not limit:
-            all_data = sorted(all_data, key=lambda r: (r.get("id") or ""))
-        
-        # Áp dụng offset nếu có (chỉ khi không dùng cursor)
-        if offset > 0 and not after_id:
-            all_data = all_data[offset:]
-        
-        data = [
-            {RESPONSE_LABELS[k]: v for k, v in row.items() if k in RESPONSE_LABELS}
-            for row in all_data
-        ]
+            # Áp dụng lại tất cả filters
+            if from_date or to_date:
+                if date_column in TIMESTAMP_COLUMNS:
+                    if from_date:
+                        parsed_from = parse_date_param(from_date)
+                        if parsed_from:
+                            day_start, _ = parsed_from
+                            q_batch = q_batch.gte(date_column, day_start)
+                    if to_date:
+                        parsed_to = parse_date_param(to_date)
+                        if parsed_to:
+                            _, day_end = parsed_to
+                            q_batch = q_batch.lte(date_column, day_end)
+                elif date_column in DATE_COLUMNS:
+                    if from_date:
+                        date_str_from = parse_date_only(from_date)
+                        if date_str_from:
+                            q_batch = q_batch.gte(date_column, date_str_from)
+                    if to_date:
+                        date_str_to = parse_date_only(to_date)
+                        if date_str_to:
+                            q_batch = q_batch.lte(date_column, date_str_to)
+            
+            # Áp dụng lại các filter khác
+            q_batch = apply_filters_to_query(q_batch, params)
+            
+            # Thêm cursor và order
+            if current_id:
+                q_batch = q_batch.gt("id", current_id)
+            q_batch = q_batch.order("id", desc=False).limit(batch_size)
+            
+            result = q_batch.execute()
+            batch_data = result.data
+            
+            if not batch_data:
+                break
+            
+            all_data.extend(batch_data)
+            
+            if len(batch_data) < batch_size:
+                break
+            
+            last_row = batch_data[-1]
+            current_id = last_row.get("id")
+            if not current_id:
+                break
+    
+    # Sắp xếp theo id để đảm bảo thứ tự
+    if not after_id and not limit:
+        all_data = sorted(all_data, key=lambda r: (r.get("id") or ""))
+    
+    # Áp dụng offset nếu có
+    if offset > 0 and not after_id:
+        all_data = all_data[offset:]
+    
+    # Map sang response labels
+    data = [
+        {RESPONSE_LABELS[k]: v for k, v in row.items() if k in RESPONSE_LABELS}
+        for row in all_data
+    ]
+    
+    return data
+
+
+@app.get("/orders")
+async def get_orders(
+    request: Request,
+    limit: Optional[int] = Query(None, ge=1, le=10000, description="Số bản ghi tối đa (không truyền = lấy tất cả, tối đa 10000)"),
+    offset: int = Query(0, ge=0, description="Vị trí bắt đầu"),
+    after_id: Optional[str] = Query(None, description="Cursor: id bản ghi cuối trang trước (trang sau = after_id này)"),
+    from_date: Optional[str] = Query(None, description="Ngày bắt đầu (dd/mm/yyyy)"),
+    to_date: Optional[str] = Query(None, description="Ngày kết thúc (dd/mm/yyyy)"),
+    date_column: str = Query("order_date", description="Cột date để filter (order_date, created_at, ...)"),
+) -> Any:
+    """
+    Lấy danh sách orders với bộ lọc theo query params.
+    Mặc định lấy TẤT CẢ dữ liệu thỏa điều kiện filter (không giới hạn).
+    Nếu truyền limit thì sẽ giới hạn số lượng.
+    
+    Bộ lọc hỗ trợ:
+    - team: Lọc theo ca làm việc (cột shift trong DB)
+    - delivery_staff: Lọc theo nhân viên giao hàng (hỗ trợ nhiều giá trị: delivery_staff=Name1,Name2)
+    - delivery_status: Lọc theo trạng thái giao hàng (hỗ trợ nhiều giá trị)
+    - payment_status: Lọc theo trạng thái thanh toán (hỗ trợ nhiều giá trị)
+    - country, product, check_result
+    - marketing_staff, sale_staff, cskh
+    - from_date, to_date: Khoảng thời gian (dd/mm/yyyy)
+    - date_column: Cột date để lọc (mặc định: order_date)
+    
+    Ví dụ: 
+    - /orders?delivery_staff=Nguyễn Văn A&delivery_status=Delivered
+    - /orders?team=Morning&delivery_status=Delivered&payment_status=Paid&delivery_staff=Staff1,Staff2&from_date=01/01/2026&to_date=31/01/2026
+    
+    Response bao gồm: id, nhanvien_maketing, nhanvien_sale, ngaytao, tongtien, order_date, country, product, 
+    total_amount_vnd, tracking_code, team, delivery_status, payment_status, delivery_staff, check_result, shift
+    """
+    try:
+        data = await fetch_filtered_orders(
+            request=request,
+            limit=limit,
+            offset=offset,
+            after_id=after_id,
+            from_date=from_date,
+            to_date=to_date,
+            date_column=date_column,
+        )
         last_id = data[-1]["id"] if data else None
         return JSONResponse(
             content={
@@ -816,10 +837,94 @@ async def get_orders(
         )
 
 
+@app.get("/orders/export")
+async def export_orders(
+    request: Request,
+    format: str = Query("csv", description="Định dạng file export (csv, excel)"),
+    from_date: Optional[str] = Query(None, description="Ngày bắt đầu (dd/mm/yyyy)"),
+    to_date: Optional[str] = Query(None, description="Ngày kết thúc (dd/mm/yyyy)"),
+    date_column: str = Query("order_date", description="Cột date để filter (order_date, created_at, ...)"),
+) -> Response:
+    """
+    Export danh sách orders đã lọc ra file CSV hoặc Excel.
+    Hỗ trợ tất cả các bộ lọc giống như endpoint /orders.
+    
+    Ví dụ:
+    - /orders/export?format=csv&team=Morning&delivery_status=Delivered&from_date=01/01/2026&to_date=31/01/2026
+    - /orders/export?format=csv&delivery_staff=Nguyễn Văn A,Trần Văn B&payment_status=Paid
+    
+    Format hỗ trợ:
+    - csv: Xuất ra file CSV (mặc định)
+    - excel: Xuất ra file Excel (sẽ thêm sau nếu cần)
+    """
+    try:
+        # Lấy dữ liệu đã lọc (không giới hạn)
+        data = await fetch_filtered_orders(
+            request=request,
+            limit=None,
+            offset=0,
+            after_id=None,
+            from_date=from_date,
+            to_date=to_date,
+            date_column=date_column,
+        )
+        
+        if not data:
+            return JSONResponse(
+                content={"error": "Không có dữ liệu để export", "count": 0},
+                status_code=404,
+            )
+        
+        # Tạo file CSV
+        if format.lower() == "csv":
+            output = io.StringIO()
+            
+            # Lấy tất cả các keys từ dữ liệu đầu tiên để làm header
+            if data:
+                fieldnames = list(data[0].keys())
+                writer = csv.DictWriter(output, fieldnames=fieldnames)
+                writer.writeheader()
+                writer.writerows(data)
+            
+            csv_content = output.getvalue()
+            output.close()
+            
+            # Tạo tên file với timestamp
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"orders_export_{timestamp}.csv"
+            
+            return Response(
+                content=csv_content.encode('utf-8-sig'),  # UTF-8 BOM để Excel mở đúng tiếng Việt
+                media_type="text/csv; charset=utf-8",
+                headers={
+                    "Content-Disposition": f'attachment; filename="{filename}"'
+                }
+            )
+        
+        elif format.lower() == "excel":
+            # TODO: Thêm hỗ trợ Excel nếu cần (cần cài thêm openpyxl)
+            return JSONResponse(
+                content={"error": "Excel format chưa được hỗ trợ. Vui lòng dùng format=csv"},
+                status_code=400,
+            )
+        
+        else:
+            return JSONResponse(
+                content={"error": f"Format '{format}' không được hỗ trợ. Chỉ hỗ trợ: csv, excel"},
+                status_code=400,
+            )
+            
+    except Exception as e:
+        return JSONResponse(
+            content={"error": str(e)},
+            status_code=500,
+        )
+
+
 @app.get("/detail_reports")
 async def get_detail_reports(
     request: Request,
-    limit: int = Query(100, ge=1, le=1000, description="Số bản ghi tối đa"),
+    limit: int = Query(100, ge=1, le=10000, description="Số bản ghi tối đa"),
     offset: int = Query(0, ge=0, description="Vị trí bắt đầu"),
     after_id: Optional[str] = Query(None, description="Cursor: id bản ghi cuối trang trước"),
 ) -> Any:
@@ -889,7 +994,7 @@ async def get_detail_reports(
 @app.get("/sales_reports")
 async def get_sales_reports(
     request: Request,
-    limit: int = Query(100, ge=1, le=1000, description="Số bản ghi tối đa"),
+    limit: int = Query(100, ge=1, le=10000, description="Số bản ghi tối đa"),
     offset: int = Query(0, ge=0, description="Vị trí bắt đầu"),
     after_id: Optional[str] = Query(None, description="Cursor: id bản ghi cuối trang trước"),
 ) -> Any:
