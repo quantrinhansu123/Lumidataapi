@@ -124,6 +124,9 @@ export default async function handler(
             id: salesReport.id,
             name: salesReport.name || salesReport.ten || salesReport.Tên,
             date: salesReport.date || salesReport.ngay || salesReport.Ngày,
+            shift: salesReport.shift || salesReport.ca || salesReport.casle || '',
+            product: salesReport.product || salesReport.san_pham || salesReport.Sản_phẩm || '',
+            market: salesReport.market || salesReport.thi_truong || salesReport.Thị_trường || '',
             order_count: orderCount,
           });
         }
