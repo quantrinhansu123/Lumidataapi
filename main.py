@@ -645,7 +645,7 @@ def apply_filters_to_query(query, filters: dict):
 @app.get("/orders")
 async def get_orders(
     request: Request,
-    limit: int = Query(100, ge=1, le=1000, description="Số bản ghi tối đa"),
+    limit: Optional[int] = Query(None, ge=1, description="Số bản ghi tối đa (không truyền = lấy tất cả)"),
     offset: int = Query(0, ge=0, description="Vị trí bắt đầu"),
     after_id: Optional[str] = Query(None, description="Cursor: id bản ghi cuối trang trước (trang sau = after_id này)"),
     from_date: Optional[str] = Query(None, description="Ngày bắt đầu (dd/mm/yyyy)"),
@@ -654,8 +654,8 @@ async def get_orders(
 ) -> Any:
     """
     Lấy danh sách orders với bộ lọc theo query params.
-    Phân trang: dùng after_id (cursor) để tránh trùng/thiếu. Trang 1 không truyền after_id;
-    trang sau truyền after_id=id của bản ghi cuối trong trang trước.
+    Mặc định lấy TẤT CẢ dữ liệu thỏa điều kiện filter (không giới hạn).
+    Nếu truyền limit thì sẽ giới hạn số lượng.
     
     Bộ lọc hỗ trợ:
     - team: Lọc theo ca làm việc (cột shift trong DB)
@@ -703,23 +703,38 @@ async def get_orders(
     # Áp dụng các filter khác (hỗ trợ nhiều giá trị: a,b,c)
     q = apply_filters_to_query(q, params)
 
-    # PostgREST/Supabase không đảm bảo thứ tự → luôn lấy tối đa 1000 bản ghi (offset=0),
-    # sắp xếp theo id trong Python rồi cắt [offset:offset+limit].
+    # Lấy tất cả dữ liệu (không giới hạn) nếu không có limit
+    # Supabase có giới hạn mặc định, nên ta lấy số lượng lớn
+    max_limit = 100000  # Giới hạn tối đa để tránh quá tải
+    
     if after_id:
-        q = q.gt("id", after_id.strip()).order("id", desc=False).limit(limit)
+        # Phân trang với cursor
+        if limit:
+            q = q.gt("id", after_id.strip()).order("id", desc=False).limit(limit)
+        else:
+            q = q.gt("id", after_id.strip()).order("id", desc=False).limit(max_limit)
         fetch_all_then_slice = False
     else:
-        q = q.limit(1000).offset(0)
-        fetch_all_then_slice = True
+        # Lấy tất cả hoặc theo limit
+        if limit:
+            q = q.limit(limit).offset(offset)
+            fetch_all_then_slice = False
+        else:
+            # Lấy tất cả (giới hạn tối đa 100000 để tránh quá tải)
+            q = q.limit(max_limit).offset(0)
+            fetch_all_then_slice = True
 
     try:
-        # Query dữ liệu để trả về (có phân trang)
+        # Query dữ liệu để trả về
         result = q.execute()
         raw = result.data
+        
         if fetch_all_then_slice:
+            # Sắp xếp và áp dụng offset nếu có
             raw = sorted(raw, key=lambda r: (r.get("id") or ""))
-            start = offset * limit  # offset = số trang (0=trang đầu, 1=trang 2, ...)
-            raw = raw[start : start + limit] if start < len(raw) else []
+            if offset > 0:
+                raw = raw[offset:] if offset < len(raw) else []
+        
         data = [
             {RESPONSE_LABELS[k]: v for k, v in row.items() if k in RESPONSE_LABELS}
             for row in raw
@@ -729,7 +744,7 @@ async def get_orders(
             content={
                 "data": data,
                 "count": len(data),
-                "next_after_id": last_id
+                "next_after_id": last_id if limit and len(data) == limit else None
             },
             status_code=200,
         )
