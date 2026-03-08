@@ -659,12 +659,20 @@ async def get_orders(
     
     Bộ lọc hỗ trợ:
     - team: Lọc theo ca làm việc (cột shift trong DB)
-    - delivery_status, payment_status, country, product, check_result
-    - marketing_staff, sale_staff, delivery_staff, cskh
+    - delivery_staff: Lọc theo nhân viên giao hàng (hỗ trợ nhiều giá trị: delivery_staff=Name1,Name2)
+    - delivery_status: Lọc theo trạng thái giao hàng (hỗ trợ nhiều giá trị)
+    - payment_status: Lọc theo trạng thái thanh toán (hỗ trợ nhiều giá trị)
+    - country, product, check_result
+    - marketing_staff, sale_staff, cskh
     - from_date, to_date: Khoảng thời gian (dd/mm/yyyy)
     - date_column: Cột date để lọc (mặc định: order_date)
     
-    Ví dụ: /orders?team=Morning&delivery_status=Delivered&product=Product%20A&from_date=01/01/2026&to_date=31/01/2026
+    Ví dụ: 
+    - /orders?delivery_staff=Nguyễn Văn A&delivery_status=Delivered
+    - /orders?team=Morning&delivery_status=Delivered&payment_status=Paid&delivery_staff=Staff1,Staff2&from_date=01/01/2026&to_date=31/01/2026
+    
+    Response bao gồm: id, nhanvien_maketing, nhanvien_sale, ngaytao, tongtien, order_date, country, product, 
+    total_amount_vnd, tracking_code, team, delivery_status, payment_status, delivery_staff, check_result, shift
     """
     supabase = get_supabase()
     q = supabase.table("orders").select(SELECT_COLUMNS)
