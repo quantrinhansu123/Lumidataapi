@@ -704,40 +704,57 @@ async def get_orders(
     q = apply_filters_to_query(q, params)
 
     # Lấy tất cả dữ liệu (không giới hạn) nếu không có limit
-    # Supabase có giới hạn mặc định, nên ta lấy số lượng lớn
-    max_limit = 100000  # Giới hạn tối đa để tránh quá tải
+    # Supabase có giới hạn mặc định 1000, nên ta phải query nhiều lần
+    batch_size = 1000  # Kích thước mỗi batch
     
-    if after_id:
-        # Phân trang với cursor
-        if limit:
-            q = q.gt("id", after_id.strip()).order("id", desc=False).limit(limit)
-        else:
-            q = q.gt("id", after_id.strip()).order("id", desc=False).limit(max_limit)
-        fetch_all_then_slice = False
-    else:
-        # Lấy tất cả hoặc theo limit
-        if limit:
-            q = q.limit(limit).offset(offset)
-            fetch_all_then_slice = False
-        else:
-            # Lấy tất cả (giới hạn tối đa 100000 để tránh quá tải)
-            q = q.limit(max_limit).offset(0)
-            fetch_all_then_slice = True
-
     try:
-        # Query dữ liệu để trả về
-        result = q.execute()
-        raw = result.data
+        all_data = []
         
-        if fetch_all_then_slice:
-            # Sắp xếp và áp dụng offset nếu có
-            raw = sorted(raw, key=lambda r: (r.get("id") or ""))
-            if offset > 0:
-                raw = raw[offset:] if offset < len(raw) else []
+        if after_id:
+            # Phân trang với cursor
+            if limit:
+                q_cursor = q.gt("id", after_id.strip()).order("id", desc=False).limit(limit)
+                result = q_cursor.execute()
+                all_data = result.data
+            else:
+                # Lấy tất cả từ cursor
+                current_after_id = after_id.strip()
+                while True:
+                    q_batch = q.gt("id", current_after_id).order("id", desc=False).limit(batch_size)
+                    result = q_batch.execute()
+                    batch_data = result.data
+                    if not batch_data:
+                        break
+                    all_data.extend(batch_data)
+                    if len(batch_data) < batch_size:
+                        break
+                    current_after_id = batch_data[-1].get("id")
+        else:
+            # Lấy tất cả hoặc theo limit
+            if limit:
+                q_limit = q.limit(limit).offset(offset)
+                result = q_limit.execute()
+                all_data = result.data
+            else:
+                # Lấy tất cả bằng cách query nhiều lần
+                current_offset = offset
+                while True:
+                    q_batch = q.limit(batch_size).offset(current_offset)
+                    result = q_batch.execute()
+                    batch_data = result.data
+                    if not batch_data:
+                        break
+                    all_data.extend(batch_data)
+                    if len(batch_data) < batch_size:
+                        break
+                    current_offset += batch_size
+        
+        # Sắp xếp theo id để đảm bảo thứ tự
+        all_data = sorted(all_data, key=lambda r: (r.get("id") or ""))
         
         data = [
             {RESPONSE_LABELS[k]: v for k, v in row.items() if k in RESPONSE_LABELS}
-            for row in raw
+            for row in all_data
         ]
         last_id = data[-1]["id"] if data else None
         return JSONResponse(
