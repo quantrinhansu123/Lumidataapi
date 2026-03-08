@@ -1,0 +1,79 @@
+# Orders API - Các URL ví dụ sẵn sàng sử dụng
+
+## Base URL
+http://127.0.0.1:8000/orders
+
+## 1. Lọc theo Team (Checkbox - Nhiều giá trị)
+http://127.0.0.1:8000/orders?team=Morning,Afternoon,Night
+
+## 2. Lọc theo Delivery Status (Checkbox)
+http://127.0.0.1:8000/orders?delivery_status=Delivered,Pending,In Transit
+
+## 3. Lọc theo Payment Status (Checkbox)
+http://127.0.0.1:8000/orders?payment_status=Paid,Unpaid,Pending
+
+## 4. Lọc theo Delivery Staff (Checkbox)
+http://127.0.0.1:8000/orders?delivery_staff=Nguyễn Văn C,Trần Văn D,Lê Văn E
+
+## 5. Lọc theo Marketing Staff (Checkbox)
+http://127.0.0.1:8000/orders?marketing_staff=Nguyễn Đức Anh,Trần Văn Bình
+
+## 6. Lọc theo Country (Checkbox)
+http://127.0.0.1:8000/orders?country=VN,US,UK
+
+## 7. Lọc theo Product (Checkbox)
+http://127.0.0.1:8000/orders?product=Product A,Product B,Product C
+
+## 8. Lọc theo City (Checkbox)
+http://127.0.0.1:8000/orders?city=Hà Nội,Hồ Chí Minh,Đà Nẵng
+
+## 9. Lọc theo Date Range
+http://127.0.0.1:8000/orders?from_date=01/02/2026&to_date=10/02/2026&date_column=order_date
+
+## 10. Kết hợp Team + Delivery Status
+http://127.0.0.1:8000/orders?team=Morning,Afternoon&delivery_status=Delivered
+
+## 11. Kết hợp Team + Payment Status
+http://127.0.0.1:8000/orders?team=Morning,Afternoon&payment_status=Paid
+
+## 12. Kết hợp Delivery Staff + Delivery Status
+http://127.0.0.1:8000/orders?delivery_staff=Nguyễn Văn C,Trần Văn D&delivery_status=Delivered
+
+## 13. Kết hợp Team + Delivery Status + Payment Status
+http://127.0.0.1:8000/orders?team=Morning,Afternoon&delivery_status=Delivered,Pending&payment_status=Paid,Unpaid
+
+## 14. Kết hợp Marketing Staff + Product + Date Range
+http://127.0.0.1:8000/orders?marketing_staff=Nguyễn Đức Anh,Trần Văn Bình&product=Product A,Product B&from_date=01/02/2026&to_date=10/02/2026
+
+## 15. Kết hợp Delivery Staff + Team + Delivery Status + Date Range
+http://127.0.0.1:8000/orders?delivery_staff=Nguyễn Văn C,Trần Văn D&team=Morning,Afternoon&delivery_status=Delivered&from_date=01/01/2026&to_date=31/01/2026
+
+## 16. Kết hợp đầy đủ các filter quan trọng
+http://127.0.0.1:8000/orders?team=Morning,Afternoon&delivery_status=Delivered,Pending&payment_status=Paid,Unpaid&delivery_staff=Staff1,Staff2&country=VN,US&product=Product A,Product B&from_date=01/01/2026&to_date=31/01/2026
+
+## 17. Lọc theo Check Result
+http://127.0.0.1:8000/orders?check_result=Pass,Fail
+
+## 18. Lọc theo Sale Staff
+http://127.0.0.1:8000/orders?sale_staff=Nguyễn Văn A,Trần Thị B
+
+## 19. Lọc theo CSKH
+http://127.0.0.1:8000/orders?cskh=Nguyễn Văn F
+
+## 20. Lọc với Limit
+http://127.0.0.1:8000/orders?team=Morning&delivery_status=Delivered&limit=50
+
+## 21. Lọc theo Tracking Code
+http://127.0.0.1:8000/orders?tracking_code=TRACK001,TRACK002
+
+## 22. Lọc theo Customer Type
+http://127.0.0.1:8000/orders?customer_type=VIP,Regular
+
+## 23. Lọc theo Payment Method
+http://127.0.0.1:8000/orders?payment_method=Bank Transfer,Cash
+
+## 24. Lọc theo Shipping Unit
+http://127.0.0.1:8000/orders?shipping_unit=Vietnam Post,FedEx
+
+## 25. Lọc theo Created At (Date Range)
+http://127.0.0.1:8000/orders?from_date=01/02/2026&to_date=10/02/2026&date_column=created_at
