@@ -26,6 +26,8 @@ Tài liệu này mô tả chi tiết các cột trả về và bộ lọc hỗ t
 | `delivery_staff` | `delivery_staff` | Nhân viên giao hàng |
 | `check_result` | `check_result` | Kết quả kiểm tra |
 | `shift` | `shift` | Ca làm việc |
+| `accountant_confirm` | `accountant_confirm` | Xác nhận kế toán |
+| `delivery_status_nb` | `delivery_status_nb` | Trạng thái giao hàng (NB) |
 
 ### Tham số phân trang
 

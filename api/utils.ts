@@ -13,6 +13,43 @@ export function normalizeString(value: any): string {
 }
 
 /**
+ * Normalize Vietnamese names for fuzzy matching:
+ * - remove accents
+ * - lowercase
+ * - collapse multiple spaces
+ */
+export function normalizeNameForMatch(value: any): string {
+  const raw = String(value ?? '').trim().toLowerCase();
+  if (!raw) {
+    return '';
+  }
+
+  // NFD + strip diacritics (works for most accented characters)
+  const noAccents = raw
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd');
+
+  return noAccents.replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Fuzzy name matching:
+ * - exact match after normalization
+ * - one normalized name contains the other
+ */
+export function namesMatch(name1: any, name2: any): boolean {
+  const n1 = normalizeNameForMatch(name1);
+  const n2 = normalizeNameForMatch(name2);
+
+  if (!n1 || !n2) {
+    return false;
+  }
+
+  return n1 === n2 || n1.includes(n2) || n2.includes(n1);
+}
+
+/**
  * Normalize date to YYYY-MM-DD format
  */
 export function normalizeDate(value: any): string | null {
@@ -78,8 +115,53 @@ export function matchesShift(salesReportShift: string, orderShift: string): bool
     return orderShiftNorm.includes('giữa ca');
   }
 
-  // For other cases: exact match or contains
-  return orderShiftNorm === reportShift || orderShiftNorm.includes(reportShift);
+  // For other shift values: exact match
+  return orderShiftNorm === reportShift;
+}
+
+/**
+ * Parse number safely from mixed formats (e.g. 1000000, "1,000,000", "1.000.000")
+ */
+export function safeToNumber(value: any): number {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : 0;
+  }
+
+  const raw = String(value ?? '').trim();
+  if (!raw) {
+    return 0;
+  }
+
+  const normalized = raw
+    .replace(/\s/g, '')
+    .replace(/,/g, '')
+    .replace(/\.(?=\d{3}(\D|$))/g, '');
+
+  const parsed = Number.parseFloat(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+/**
+ * Pick revenue field by priority and parse into number.
+ */
+export function getOrderRevenue(order: any): number {
+  const candidates = [
+    order?.total_amount_vnd,
+    order?.total_vnd,
+    order?.tongtien,
+    order?.revenue_vnd,
+    order?.total_amount,
+    order?.amount,
+  ];
+
+  for (const candidate of candidates) {
+    const amount = safeToNumber(candidate);
+    if (amount !== 0) {
+      return amount;
+    }
+  }
+
+  return 0;
 }
 
 /**
@@ -90,9 +172,9 @@ export function orderMatchesSalesReport(
   salesReport: any
 ): boolean {
   // 1. Name matching: name (sales_reports) = sale_staff (orders)
-  const reportName = normalizeString(salesReport.name || salesReport.ten || salesReport.Tên);
-  const orderSaleStaff = normalizeString(order.sale_staff);
-  if (reportName !== orderSaleStaff) {
+  const reportName = salesReport.name || salesReport.ten || salesReport.Tên;
+  const orderSaleStaff = order.nhanvien_sale || order.sale_staff;
+  if (!namesMatch(orderSaleStaff, reportName)) {
     return false;
   }
 
@@ -147,7 +229,7 @@ export async function fetchAllOrders(
   while (hasMore) {
     let query = supabase
       .from('orders')
-      .select('id, sale_staff, order_date, shift, product, country, check_result, total_amount_vnd');
+      .select('id, sale_staff, order_date, shift, product, country, check_result, total_amount_vnd, total_vnd');
 
     // Apply date filter if provided
     if (dateFilter?.from) {
@@ -198,8 +280,8 @@ export function calculateOrderStatistics(
     if (orderMatchesSalesReport(order, salesReport)) {
       orderCount++;
       
-      // Calculate revenue
-      const amount = parseFloat(order.total_amount_vnd) || 0;
+      // Calculate revenue using prioritized field fallback.
+      const amount = getOrderRevenue(order);
       revenueActual += amount;
 
       // Check if order is cancelled
@@ -220,4 +302,65 @@ export function calculateOrderStatistics(
     revenue_cancel_actual: revenueCancelActual,
     order_success_count: orderSuccessCount,
   };
+}
+
+/**
+ * Update sales report stats with graceful fallback when some columns do not exist.
+ */
+export async function updateSalesReportStatistics(
+  supabase: any,
+  reportId: string,
+  stats: {
+    order_count: number;
+    order_cancel_count_actual: number;
+    revenue_actual: number;
+    revenue_cancel_actual: number;
+    order_success_count: number;
+  }
+): Promise<{ ok: boolean; usedFields: string[]; error?: string }> {
+  const payloads: Array<Record<string, number>> = [
+    {
+      order_count: Number(stats.order_count) || 0,
+      order_cancel_count_actual: Number(stats.order_cancel_count_actual) || 0,
+      revenue_actual: Number.isFinite(stats.revenue_actual) ? Number(stats.revenue_actual) : 0,
+      revenue_cancel_actual: Number.isFinite(stats.revenue_cancel_actual) ? Number(stats.revenue_cancel_actual) : 0,
+      order_success_count: Number(stats.order_success_count) || 0,
+    },
+    {
+      order_count: Number(stats.order_count) || 0,
+      order_cancel_count: Number(stats.order_cancel_count_actual) || 0,
+      revenue_actual: Number.isFinite(stats.revenue_actual) ? Number(stats.revenue_actual) : 0,
+      revenue_cancel_actual: Number.isFinite(stats.revenue_cancel_actual) ? Number(stats.revenue_cancel_actual) : 0,
+    },
+    {
+      order_count: Number(stats.order_count) || 0,
+      order_cancel_count_actual: Number(stats.order_cancel_count_actual) || 0,
+    },
+    {
+      revenue_actual: Number.isFinite(stats.revenue_actual) ? Number(stats.revenue_actual) : 0,
+      revenue_cancel_actual: Number.isFinite(stats.revenue_cancel_actual) ? Number(stats.revenue_cancel_actual) : 0,
+    },
+    {
+      order_count: Number(stats.order_count) || 0,
+    },
+  ];
+
+  let lastError = '';
+  for (const payload of payloads) {
+    const { error } = await supabase
+      .from('sales_reports')
+      .update(payload)
+      .eq('id', reportId);
+
+    if (!error) {
+      return { ok: true, usedFields: Object.keys(payload) };
+    }
+
+    lastError = error.message || String(error);
+    if (error.code !== 'PGRST204') {
+      return { ok: false, usedFields: Object.keys(payload), error: lastError };
+    }
+  }
+
+  return { ok: false, usedFields: [], error: lastError || 'Unknown update error' };
 }

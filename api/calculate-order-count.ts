@@ -4,6 +4,7 @@ import {
   fetchAllOrders,
   normalizeDate,
   calculateOrderStatistics,
+  updateSalesReportStatistics,
 } from './utils';
 
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
@@ -115,20 +116,15 @@ export default async function handler(
         // Calculate all statistics
         const stats = calculateOrderStatistics(allOrders, salesReport);
 
-        // Update the sales report with all calculated values
-        const { error: updateError } = await supabase
-          .from('sales_reports')
-          .update({
-            order_count: stats.order_count,
-            order_cancel_count_actual: stats.order_cancel_count_actual,
-            revenue_actual: stats.revenue_actual,
-            revenue_cancel_actual: stats.revenue_cancel_actual,
-            order_success_count: stats.order_success_count,
-          })
-          .eq('id', salesReport.id);
+        // Update with fallback payloads so missing columns do not break the entire job.
+        const updateResult = await updateSalesReportStatistics(
+          supabase,
+          salesReport.id,
+          stats
+        );
 
-        if (updateError) {
-          console.error(`Error updating record ${salesReport.id}:`, updateError);
+        if (!updateResult.ok) {
+          console.error(`Error updating record ${salesReport.id}:`, updateResult.error);
           errors++;
         } else {
           updatedRecords.push({
@@ -140,9 +136,11 @@ export default async function handler(
             market: salesReport.market || salesReport.thi_truong || salesReport.Thị_trường || '',
             order_count: stats.order_count,
             order_cancel_count_actual: stats.order_cancel_count_actual,
+            order_cancel_count: stats.order_cancel_count_actual,
             revenue_actual: stats.revenue_actual,
             revenue_cancel_actual: stats.revenue_cancel_actual,
             order_success_count: stats.order_success_count,
+            updated_fields: updateResult.usedFields,
           });
         }
       } catch (error: any) {

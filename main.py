@@ -86,7 +86,7 @@ ALL_ORDER_COLUMNS = {
 }
 
 # Cột trả về từ API và label tương ứng
-SELECT_COLUMNS = "id, marketing_staff, sale_staff, created_at, total_vnd, order_date, country, product, total_amount_vnd, tracking_code, team, delivery_status, payment_status, delivery_staff, check_result, shift"
+SELECT_COLUMNS = "id, marketing_staff, sale_staff, created_at, total_vnd, order_date, country, product, total_amount_vnd, tracking_code, team, delivery_status, payment_status, delivery_staff, check_result, shift, accountant_confirm, delivery_status_nb"
 RESPONSE_LABELS = {
     "id": "id",
     "marketing_staff": "nhanvien_maketing",
@@ -103,7 +103,9 @@ RESPONSE_LABELS = {
     "payment_status": "payment_status",
     "delivery_staff": "delivery_staff",
     "check_result": "check_result",
-    "shift": "shift"
+    "shift": "shift",
+    "accountant_confirm": "accountant_confirm",
+    "delivery_status_nb": "delivery_status_nb"
 }
 
 # Mapping từ parameter name sang column name trong DB

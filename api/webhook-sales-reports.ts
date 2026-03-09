@@ -4,6 +4,7 @@ import {
   fetchAllOrders,
   calculateOrderStatistics,
   normalizeDate,
+  updateSalesReportStatistics,
 } from './utils';
 
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
@@ -76,20 +77,15 @@ export default async function handler(
     // Calculate all statistics
     const stats = calculateOrderStatistics(allOrders, salesReport);
 
-    // Update the sales report with all calculated values
-    const { error: updateError } = await supabase
-      .from('sales_reports')
-      .update({
-        order_count: stats.order_count,
-        order_cancel_count_actual: stats.order_cancel_count_actual,
-        revenue_actual: stats.revenue_actual,
-        revenue_cancel_actual: stats.revenue_cancel_actual,
-        order_success_count: stats.order_success_count,
-      })
-      .eq('id', salesReport.id);
+    // Update with graceful fallback when some destination columns are unavailable.
+    const updateResult = await updateSalesReportStatistics(
+      supabase,
+      salesReport.id,
+      stats
+    );
 
-    if (updateError) {
-      throw new Error(`Error updating sales_report: ${updateError.message}`);
+    if (!updateResult.ok) {
+      throw new Error(`Error updating sales_report: ${updateResult.error}`);
     }
 
     return res.status(200).json({
@@ -103,9 +99,11 @@ export default async function handler(
       market: salesReport.market || salesReport.thi_truong || salesReport.Thị_trường || '',
       order_count: stats.order_count,
       order_cancel_count_actual: stats.order_cancel_count_actual,
+      order_cancel_count: stats.order_cancel_count_actual,
       revenue_actual: stats.revenue_actual,
       revenue_cancel_actual: stats.revenue_cancel_actual,
       order_success_count: stats.order_success_count,
+      updated_fields: updateResult.usedFields,
     });
   } catch (error: any) {
     console.error('Error in webhook-sales-reports:', error);
