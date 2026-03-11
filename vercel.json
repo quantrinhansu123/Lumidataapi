@@ -8,11 +8,5 @@
     "api/**/*.ts": {
       "maxDuration": 60
     }
-  },
-  "ignore": [
-    "main.py",
-    "*.py",
-    "__pycache__",
-    "requirements.txt"
-  ]
+  }
 }

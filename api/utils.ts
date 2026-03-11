@@ -307,16 +307,15 @@ export function calculateOrderStatistics(
   let revenueActual = 0;
   let revenueCancelActual = 0;
 
-  // Debug: Log sales report info
+  // Debug: Log sales report info (only if needed)
   const reportName = salesReport.name || salesReport.ten || salesReport.Tên || salesReport.nhanvien || salesReport.nhan_vien;
   const reportDate = normalizeDate(salesReport.date || salesReport.ngay || salesReport.Ngày);
-  console.log(`[DEBUG] Calculating for sales report: name="${reportName}", date="${reportDate}"`);
-
+  // Only log if no matches found (performance optimization)
   let checkedCount = 0;
   for (const order of orders) {
     checkedCount++;
-    // Enable debug for first 10 orders to see why they don't match
-    const matches = orderMatchesSalesReport(order, salesReport, checkedCount <= 10);
+    // Disable debug by default for performance
+    const matches = orderMatchesSalesReport(order, salesReport, false);
     
     if (matches) {
       orderCount++;
@@ -332,16 +331,13 @@ export function calculateOrderStatistics(
         revenueCancelActual += amount;
       }
       
-      // Debug: Log first few matches
-      if (orderCount <= 3) {
-        const orderName = order.sale_staff || order.sale || '';
-        const orderDate = normalizeDate(order.order_date || order.ngay || order.date);
-        console.log(`[DEBUG] Match #${orderCount}: order_id=${order.id}, name="${orderName}", date="${orderDate}"`);
-      }
     }
   }
 
-  console.log(`[DEBUG] Checked ${checkedCount} orders, found ${orderCount} matches`);
+  // Only log if no matches found (performance optimization)
+  if (orderCount === 0 && checkedCount > 0) {
+    console.log(`[DEBUG] No matches found for sales report: name="${reportName}", date="${reportDate}", checked ${checkedCount} orders`);
+  }
 
   const orderSuccessCount = orderCount - orderCancelCount;
 

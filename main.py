@@ -37,8 +37,15 @@ def fetch_all_rows_with_pagination(
     batch_size: int = 1000,
     max_rows: int = 200000,
     cursor_column: str = "id",
+    date_filter: Optional[Dict[str, str]] = None,
+    date_column: str = "date",
 ) -> List[dict]:
-    """Lấy dữ liệu theo cursor để tránh giới hạn 1000 rows của Supabase API."""
+    """Lấy dữ liệu theo cursor để tránh giới hạn 1000 rows của Supabase API.
+    
+    Args:
+        date_filter: Dict với keys 'from' và 'to' (format: YYYY-MM-DD)
+        date_column: Tên cột date để filter (mặc định: 'date')
+    """
     supabase = get_supabase()
     all_rows: List[dict] = []
     last_cursor_value: Optional[Any] = None
@@ -51,6 +58,20 @@ def fetch_all_rows_with_pagination(
             .order(cursor_column, desc=False)
             .limit(batch_size)
         )
+
+        # Apply date filter at database level for better performance
+        if date_filter:
+            from_date = date_filter.get("from")
+            to_date = date_filter.get("to")
+            if from_date:
+                # Parse date from dd/mm/yyyy to YYYY-MM-DD if needed
+                parsed_from = parse_date_only(from_date) if "/" in str(from_date) else from_date
+                if parsed_from:
+                    q = q.gte(date_column, parsed_from)
+            if to_date:
+                parsed_to = parse_date_only(to_date) if "/" in str(to_date) else to_date
+                if parsed_to:
+                    q = q.lte(date_column, parsed_to)
 
         if last_cursor_value is not None:
             q = q.gt(cursor_column, last_cursor_value)
@@ -1154,10 +1175,15 @@ async def get_sales_reports(
             date_range["to"] = to_date
 
     try:
+        # Optimize: apply date filter at database level if available
+        # Map date_column to actual database column name
+        db_date_column = "date" if date_column in ("date", "ngay", "Ngày") else date_column
         rows = fetch_all_rows_with_pagination(
             table_name="sales_reports",
             select_columns=SALES_REPORTS_SELECT_COLUMNS,
             batch_size=1000,
+            date_filter=date_range,
+            date_column=db_date_column,
         )
         normalized = [normalize_sales_reports_row(row) for row in rows]
         filtered = apply_sales_reports_filters_in_memory(normalized, params, date_range, date_column)
