@@ -31,6 +31,53 @@ def get_supabase() -> Client:
     return _supabase
 
 
+def fetch_all_rows_with_pagination(
+    table_name: str,
+    select_columns: str = "*",
+    batch_size: int = 1000,
+    max_rows: int = 200000,
+    cursor_column: str = "id",
+) -> List[dict]:
+    """Lấy dữ liệu theo cursor để tránh giới hạn 1000 rows của Supabase API."""
+    supabase = get_supabase()
+    all_rows: List[dict] = []
+    last_cursor_value: Optional[Any] = None
+
+    while True:
+        q = (
+            supabase
+            .table(table_name)
+            .select(select_columns)
+            .order(cursor_column, desc=False)
+            .limit(batch_size)
+        )
+
+        if last_cursor_value is not None:
+            q = q.gt(cursor_column, last_cursor_value)
+
+        result = q.execute()
+        rows = result.data or []
+
+        if not rows:
+            break
+
+        all_rows.extend(rows)
+
+        # Dừng nếu không còn đủ batch, nghĩa là đã tới trang cuối.
+        if len(rows) < batch_size:
+            break
+
+        last_cursor_value = rows[-1].get(cursor_column)
+        if last_cursor_value is None:
+            break
+
+        # Safety guard để tránh tải quá lớn khi dữ liệu tăng đột biến.
+        if len(all_rows) >= max_rows:
+            break
+
+    return all_rows[:max_rows]
+
+
 app = FastAPI(title="Orders API", description="Query orders and detail_reports from Subabase by GET params")
 
 app.add_middleware(
@@ -1010,9 +1057,6 @@ async def get_detail_reports(
     Các trường có thể filter: ten, ngay, ca, san_pham, thi_truong, team, nhan_su (danh sách tên cách nhau bởi dấu phẩy)
     Ví dụ: /detail_reports?nhan_su=Nguyễn Văn A,Trần Thị B&from_date=01/02/2026&to_date=10/02/2026
     """
-    supabase = get_supabase()
-    q = supabase.table("detail_reports").select("*")
-
     params = dict(request.query_params)
     params.pop("limit", None)
     params.pop("offset", None)
@@ -1032,11 +1076,13 @@ async def get_detail_reports(
         if to_date:
             date_range["to"] = to_date
     
-    q = q.limit(50000)
-
     try:
-        result = q.execute()
-        normalized = [normalize_detail_reports_row(row) for row in result.data]
+        rows = fetch_all_rows_with_pagination(
+            table_name="detail_reports",
+            select_columns="*",
+            batch_size=1000,
+        )
+        normalized = [normalize_detail_reports_row(row) for row in rows]
         filtered = apply_detail_reports_filters_in_memory(normalized, params, date_range, date_column)
         filtered = sorted(filtered, key=lambda r: (str(r.get("id") or "")))
 
@@ -1086,9 +1132,6 @@ async def get_sales_reports(
     - thị trường: thi_truong/market/marketsale/marketmkt/thitruong
     - ngày: date/ngay/report_date
     """
-    supabase = get_supabase()
-    q = supabase.table("sales_reports").select(SALES_REPORTS_SELECT_COLUMNS)
-
     params = dict(request.query_params)
     params.pop("limit", None)
     params.pop("offset", None)
@@ -1107,11 +1150,13 @@ async def get_sales_reports(
         if to_date:
             date_range["to"] = to_date
 
-    q = q.limit(50000)
-
     try:
-        result = q.execute()
-        normalized = [normalize_sales_reports_row(row) for row in result.data]
+        rows = fetch_all_rows_with_pagination(
+            table_name="sales_reports",
+            select_columns=SALES_REPORTS_SELECT_COLUMNS,
+            batch_size=1000,
+        )
+        normalized = [normalize_sales_reports_row(row) for row in rows]
         filtered = apply_sales_reports_filters_in_memory(normalized, params, date_range, date_column)
         filtered = sorted(filtered, key=lambda r: (str(r.get("id") or "")))
 

@@ -100,27 +100,27 @@ Một order được đếm vào `order_count` nếu **TẤT CẢ** các điều
    - `name` (sales_reports) = `sale_staff` (orders)
    - So sánh sau khi normalize (trim, lowercase)
 
-2. **Date Matching:**
+2. **Sale Name Matching (Tầng lọc bổ sung):**
+   - Nếu `sale_name` hoặc `sale` hoặc `ten_sale` hoặc `Tên_Sale` (sales_reports) có giá trị:
+     - Phải khớp với `sale_staff` (orders)
+     - So sánh sau khi normalize (trim, lowercase, remove accents)
+     - Match nếu exact match hoặc một tên chứa tên kia
+   - Nếu `sale_name` (sales_reports) = empty/null → bỏ qua điều kiện này
+
+3. **Date Matching:**
    - `date` (sales_reports) = `order_date` (orders)
    - Format: YYYY-MM-DD
 
-3. **Shift Matching (Logic đặc biệt):**
-   - Nếu `shift` (sales_reports) = **"Hết ca"**:
-     - Match với `shift` (orders) = **"Hết ca"** hoặc **"Giữa ca,Hết ca"** hoặc **"Hết ca,Giữa ca"**
-     - Tức là match nếu order shift **chứa** "Hết ca"
-   
-   - Nếu `shift` (sales_reports) = **"Giữa ca"**:
-     - Match với `shift` (orders) = **"Giữa ca"** hoặc **"Giữa ca,Hết ca"** hoặc **"Hết ca,Giữa ca"**
-     - Tức là match nếu order shift **chứa** "Giữa ca"
-   
-   - Các trường hợp khác: exact match hoặc contains
+4. **Shift Matching:** ~~BỎ QUA~~ (không kiểm tra shift)
+   - Điều kiện shift đã được bỏ qua theo yêu cầu
+   - Orders sẽ được đếm bất kể shift có khớp hay không
 
-4. **Product Matching:**
+5. **Product Matching:**
    - `product` (sales_reports) = `product` (orders)
    - So sánh sau khi normalize (trim, lowercase)
    - Nếu `product` (sales_reports) = empty/null → bỏ qua điều kiện này
 
-5. **Market Matching:**
+6. **Market Matching:**
    - `market` (sales_reports) = `country` (orders)
    - So sánh sau khi normalize (trim, lowercase)
    - Nếu `market` (sales_reports) = empty/null → bỏ qua điều kiện này

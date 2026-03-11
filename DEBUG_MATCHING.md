@@ -24,7 +24,23 @@
 - Order: `"Lê Ngọc Đài Trang"` → normalize → `"lê ngọc đài trang"` ✅
 - Order: `"Le Ngoc Dai Trang"` → normalize → `"le ngoc dai trang"` ❌ (không khớp)
 
-### 2. Date Matching (BẮT BUỘC)
+### 2. Sale Name Matching (TẦNG LỌC BỔ SUNG - TÙY CHỌN)
+- Nếu `sale_name` hoặc `sale` hoặc `ten_sale` hoặc `Tên_Sale` (sales_reports) có giá trị:
+  - Phải khớp với `sale_staff` (orders)
+  - So sánh sau khi normalize (trim, lowercase, remove accents)
+  - Match nếu exact match hoặc một tên chứa tên kia
+- **Nếu `sale_name` (sales_reports) = empty/null → bỏ qua điều kiện này**
+
+**Ví dụ:**
+- Sales report có `sale_name: "Lê Ngọc Đài Trang"` → normalize → `"le ngoc dai trang"`
+- Order có `sale_staff: "Lê Ngọc Đài Trang"` → normalize → `"le ngoc dai trang"` ✅
+- Order có `sale_staff: "Le Ngoc Dai Trang"` → normalize → `"le ngoc dai trang"` ✅
+- Order có `sale_staff: "Nguyễn Văn A"` → normalize → `"nguyen van a"` ❌ (không khớp)
+
+**Nếu sales report không có sale_name:**
+- Điều kiện này được bỏ qua, chỉ cần khớp các điều kiện khác
+
+### 3. Date Matching (BẮT BUỘC)
 - `date` (sales_reports) = `order_date` (orders)
 - Format: YYYY-MM-DD
 - **Phải khớp chính xác**
@@ -34,23 +50,12 @@
 - Order: `"2026-01-02"` ✅
 - Order: `"2026-01-03"` ❌
 
-### 3. Shift Matching (BẮT BUỘC nếu có shift trong sales_report)
-- Logic đặc biệt:
-  - Nếu `shift` (sales_reports) = **"Hết ca"**:
-    - Match với `shift` (orders) = **"Hết ca"** hoặc **"Giữa ca,Hết ca"** hoặc **"Hết ca,Giữa ca"**
-    - Tức là order shift **phải chứa** "Hết ca"
-  
-  - Nếu `shift` (sales_reports) = **"Giữa ca"**:
-    - Match với `shift` (orders) = **"Giữa ca"** hoặc **"Giữa ca,Hết ca"** hoặc **"Hết ca,Giữa ca"**
-    - Tức là order shift **phải chứa** "Giữa ca"
+### 4. Shift Matching - BỎ QUA
+- **Điều kiện shift đã được bỏ qua theo yêu cầu**
+- Orders sẽ được đếm bất kể shift có khớp hay không
+- Không kiểm tra shift trong logic matching
 
-**Ví dụ:**
-- Sales report: `"Hết ca"` → normalize → `"hết ca"`
-- Order: `"Hết ca"` → normalize → `"hết ca"` → contains "hết ca" ✅
-- Order: `"Giữa ca,Hết ca"` → normalize → `"giữa ca,hết ca"` → contains "hết ca" ✅
-- Order: `"Giữa ca"` → normalize → `"giữa ca"` → không contains "hết ca" ❌
-
-### 4. Product Matching (TÙY CHỌN - bỏ qua nếu empty)
+### 5. Product Matching (TÙY CHỌN - bỏ qua nếu empty)
 - `product` (sales_reports) = `product` (orders)
 - So sánh sau khi normalize (trim, lowercase)
 - **Nếu `product` (sales_reports) = empty/null → bỏ qua điều kiện này**
@@ -64,7 +69,7 @@
 **Nếu sales report không có product:**
 - Sales report: `product = null` hoặc `product = ""` → **Bỏ qua điều kiện này** ✅
 
-### 5. Market Matching (TÙY CHỌN - bỏ qua nếu empty)
+### 6. Market Matching (TÙY CHỌN - bỏ qua nếu empty)
 - `market` (sales_reports) = `country` (orders)
 - So sánh sau khi normalize (trim, lowercase)
 - **Nếu `market` (sales_reports) = empty/null → bỏ qua điều kiện này**

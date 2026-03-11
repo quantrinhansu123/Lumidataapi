@@ -178,21 +178,33 @@ export function orderMatchesSalesReport(
     return false;
   }
 
-  // 2. Date matching: date (sales_reports) = order_date (orders)
+  // 2. Sale Name matching: additional filter by sale name field
+  // Check if sales_report has a sale_name field and match with order's sale_staff
+  const reportSaleName = salesReport.sale_name || salesReport.sale || salesReport.ten_sale || salesReport.Tên_Sale;
+  if (reportSaleName) {
+    const normalizedReportSaleName = normalizeNameForMatch(reportSaleName);
+    const normalizedOrderSaleStaff = normalizeNameForMatch(orderSaleStaff);
+    if (normalizedReportSaleName && normalizedOrderSaleStaff) {
+      // Must match exactly or contain each other
+      if (normalizedReportSaleName !== normalizedOrderSaleStaff && 
+          !normalizedReportSaleName.includes(normalizedOrderSaleStaff) && 
+          !normalizedOrderSaleStaff.includes(normalizedReportSaleName)) {
+        return false;
+      }
+    }
+  }
+
+  // 3. Date matching: date (sales_reports) = order_date (orders)
   const reportDate = normalizeDate(salesReport.date || salesReport.ngay || salesReport.Ngày);
   const orderDate = normalizeDate(order.order_date);
   if (!reportDate || !orderDate || reportDate !== orderDate) {
     return false;
   }
 
-  // 3. Shift matching (special logic)
-  const reportShift = String(salesReport.shift || salesReport.ca || salesReport.casle || '').trim();
-  const orderShift = String(order.shift || '').trim();
-  if (reportShift && !matchesShift(reportShift, orderShift)) {
-    return false;
-  }
+  // 4. Shift matching - BỎ QUA (không kiểm tra shift)
+  // Shift matching đã được bỏ qua theo yêu cầu
 
-  // 4. Product matching (optional - skip if empty)
+  // 5. Product matching (optional - skip if empty)
   const reportProduct = normalizeString(salesReport.product || salesReport.san_pham || salesReport.Sản_phẩm);
   if (reportProduct) {
     const orderProduct = normalizeString(order.product);
@@ -201,7 +213,7 @@ export function orderMatchesSalesReport(
     }
   }
 
-  // 5. Market matching (optional - skip if empty)
+  // 6. Market matching (optional - skip if empty)
   const reportMarket = normalizeString(salesReport.market || salesReport.thi_truong || salesReport.Thị_trường);
   if (reportMarket) {
     const orderCountry = normalizeString(order.country);
