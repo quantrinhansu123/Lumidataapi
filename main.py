@@ -870,11 +870,14 @@ async def fetch_filtered_orders(
             # Đã lấy đúng limit với cursor, có thể còn data
             has_more = True
     
-    # Map sang response labels
-    data = [
-        {RESPONSE_LABELS[k]: v for k, v in row.items() if k in RESPONSE_LABELS}
-        for row in all_data
-    ]
+    # Map sang response labels (lấy trực tiếp từ cột product trong orders)
+    data = []
+    for row in all_data:
+        mapped_row = {RESPONSE_LABELS[k]: v for k, v in row.items() if k in RESPONSE_LABELS}
+        # Đảm bảo product luôn có trong response (từ cột product trong orders)
+        if 'product' not in mapped_row:
+            mapped_row['product'] = row.get('product')
+        data.append(mapped_row)
     
     # Trả về tuple (data, has_more) để nhất quán
     # has_more chỉ có ý nghĩa khi có limit

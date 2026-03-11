@@ -169,26 +169,40 @@ export function getOrderRevenue(order: any): number {
  */
 export function orderMatchesSalesReport(
   order: any,
-  salesReport: any
+  salesReport: any,
+  debug: boolean = false
 ): boolean {
   // 1. Name matching: name (sales_reports) = sale_staff (orders)
-  const reportName = salesReport.name || salesReport.ten || salesReport.Tên;
-  const orderSaleStaff = order.nhanvien_sale || order.sale_staff;
-  if (!namesMatch(orderSaleStaff, reportName)) {
+  // Try multiple field name variations for sales_report
+  const reportName = salesReport.name || salesReport.ten || salesReport.Tên || salesReport.nhanvien || salesReport.nhan_vien;
+  
+  // Try multiple field name variations for order (only use fields that exist in DB)
+  const orderSaleStaff = order.sale_staff || order.sale || order.staff;
+  
+  if (!reportName || !orderSaleStaff) {
+    if (debug) console.log(`[MATCH DEBUG] Missing name: reportName="${reportName}", orderSaleStaff="${orderSaleStaff}"`);
+    return false;
+  }
+  
+  const nameMatches = namesMatch(orderSaleStaff, reportName);
+  if (!nameMatches) {
+    if (debug) console.log(`[MATCH DEBUG] Name mismatch: report="${reportName}" (normalized: "${normalizeNameForMatch(reportName)}") vs order="${orderSaleStaff}" (normalized: "${normalizeNameForMatch(orderSaleStaff)}")`);
     return false;
   }
 
-  // 2. Sale Name matching: additional filter by sale name field
+  // 2. Sale Name matching: additional filter by sale name field (if exists)
   // Check if sales_report has a sale_name field and match with order's sale_staff
-  const reportSaleName = salesReport.sale_name || salesReport.sale || salesReport.ten_sale || salesReport.Tên_Sale;
+  const reportSaleName = salesReport.sale_name || salesReport.sale || salesReport.ten_sale || salesReport.Tên_Sale || salesReport.tên_sale;
   if (reportSaleName) {
     const normalizedReportSaleName = normalizeNameForMatch(reportSaleName);
     const normalizedOrderSaleStaff = normalizeNameForMatch(orderSaleStaff);
     if (normalizedReportSaleName && normalizedOrderSaleStaff) {
       // Must match exactly or contain each other
-      if (normalizedReportSaleName !== normalizedOrderSaleStaff && 
-          !normalizedReportSaleName.includes(normalizedOrderSaleStaff) && 
-          !normalizedOrderSaleStaff.includes(normalizedReportSaleName)) {
+      const saleNameMatches = normalizedReportSaleName === normalizedOrderSaleStaff || 
+                             normalizedReportSaleName.includes(normalizedOrderSaleStaff) || 
+                             normalizedOrderSaleStaff.includes(normalizedReportSaleName);
+      if (!saleNameMatches) {
+        if (debug) console.log(`[MATCH DEBUG] Sale name mismatch: report="${reportSaleName}" vs order="${orderSaleStaff}"`);
         return false;
       }
     }
@@ -196,8 +210,9 @@ export function orderMatchesSalesReport(
 
   // 3. Date matching: date (sales_reports) = order_date (orders)
   const reportDate = normalizeDate(salesReport.date || salesReport.ngay || salesReport.Ngày);
-  const orderDate = normalizeDate(order.order_date);
+  const orderDate = normalizeDate(order.order_date || order.ngay || order.date);
   if (!reportDate || !orderDate || reportDate !== orderDate) {
+    if (debug) console.log(`[MATCH DEBUG] Date mismatch: report="${reportDate}" vs order="${orderDate}"`);
     return false;
   }
 
@@ -207,8 +222,10 @@ export function orderMatchesSalesReport(
   // 5. Product matching (optional - skip if empty)
   const reportProduct = normalizeString(salesReport.product || salesReport.san_pham || salesReport.Sản_phẩm);
   if (reportProduct) {
-    const orderProduct = normalizeString(order.product);
+    // Lấy từ cột product trong orders
+    const orderProduct = normalizeString(order.product || order.san_pham);
     if (reportProduct !== orderProduct) {
+      if (debug) console.log(`[MATCH DEBUG] Product mismatch: report="${reportProduct}" vs order="${orderProduct}"`);
       return false;
     }
   }
@@ -216,12 +233,14 @@ export function orderMatchesSalesReport(
   // 6. Market matching (optional - skip if empty)
   const reportMarket = normalizeString(salesReport.market || salesReport.thi_truong || salesReport.Thị_trường);
   if (reportMarket) {
-    const orderCountry = normalizeString(order.country);
+    const orderCountry = normalizeString(order.country || order.thi_truong || order.market);
     if (reportMarket !== orderCountry) {
+      if (debug) console.log(`[MATCH DEBUG] Market mismatch: report="${reportMarket}" vs order="${orderCountry}"`);
       return false;
     }
   }
 
+  if (debug) console.log(`[MATCH DEBUG] ✅ All conditions matched for order ${order.id}`);
   return true;
 }
 
@@ -288,8 +307,18 @@ export function calculateOrderStatistics(
   let revenueActual = 0;
   let revenueCancelActual = 0;
 
+  // Debug: Log sales report info
+  const reportName = salesReport.name || salesReport.ten || salesReport.Tên || salesReport.nhanvien || salesReport.nhan_vien;
+  const reportDate = normalizeDate(salesReport.date || salesReport.ngay || salesReport.Ngày);
+  console.log(`[DEBUG] Calculating for sales report: name="${reportName}", date="${reportDate}"`);
+
+  let checkedCount = 0;
   for (const order of orders) {
-    if (orderMatchesSalesReport(order, salesReport)) {
+    checkedCount++;
+    // Enable debug for first 10 orders to see why they don't match
+    const matches = orderMatchesSalesReport(order, salesReport, checkedCount <= 10);
+    
+    if (matches) {
       orderCount++;
       
       // Calculate revenue using prioritized field fallback.
@@ -302,8 +331,17 @@ export function calculateOrderStatistics(
         orderCancelCount++;
         revenueCancelActual += amount;
       }
+      
+      // Debug: Log first few matches
+      if (orderCount <= 3) {
+        const orderName = order.sale_staff || order.sale || '';
+        const orderDate = normalizeDate(order.order_date || order.ngay || order.date);
+        console.log(`[DEBUG] Match #${orderCount}: order_id=${order.id}, name="${orderName}", date="${orderDate}"`);
+      }
     }
   }
+
+  console.log(`[DEBUG] Checked ${checkedCount} orders, found ${orderCount} matches`);
 
   const orderSuccessCount = orderCount - orderCancelCount;
 

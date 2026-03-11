@@ -4,6 +4,8 @@ import {
   orderMatchesSalesReport,
   normalizeString,
   normalizeDate,
+  normalizeNameForMatch,
+  namesMatch,
 } from './utils';
 
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
@@ -53,74 +55,97 @@ export default async function handler(
       });
     }
 
-    // Normalize sales report values
-    const reportName = normalizeString(salesReport.name || salesReport.ten || salesReport.Tên);
+    // Normalize sales report values (same as in orderMatchesSalesReport)
+    const reportName = salesReport.name || salesReport.ten || salesReport.Tên || salesReport.nhanvien || salesReport.nhan_vien;
     const reportDate = normalizeDate(salesReport.date || salesReport.ngay || salesReport.Ngày);
-    const reportShift = String(salesReport.shift || salesReport.ca || salesReport.casle || '').trim();
     const reportProduct = normalizeString(salesReport.product || salesReport.san_pham || salesReport.Sản_phẩm);
     const reportMarket = normalizeString(salesReport.market || salesReport.thi_truong || salesReport.Thị_trường);
+    const reportSaleName = salesReport.sale_name || salesReport.sale || salesReport.ten_sale || salesReport.Tên_Sale || salesReport.tên_sale;
 
-    // Get potential matching orders
-    const { data: allOrders, error: ordersError } = await supabase
+    // Get potential matching orders (with date filter if available)
+    let ordersQuery = supabase
       .from('orders')
-      .select('id, sale_staff, order_date, shift, product, country')
-      .eq('order_date', reportDate || '')
-      .limit(1000);
+      .select('id, sale_staff, order_date, shift, product, country, check_result, total_amount_vnd, total_vnd');
+    
+    if (reportDate) {
+      ordersQuery = ordersQuery.eq('order_date', reportDate);
+    }
+    
+    const { data: allOrders, error: ordersError } = await ordersQuery.limit(1000);
 
     if (ordersError) {
       throw new Error(`Error fetching orders: ${ordersError.message}`);
     }
 
-    // Debug matching for each order
+    // Debug matching for each order (using same logic as orderMatchesSalesReport)
     const debugResults: any[] = [];
     let matchCount = 0;
 
     for (const order of allOrders || []) {
-      const orderName = normalizeString(order.sale_staff);
+      const orderSaleStaff = order.sale_staff || order.sale || order.staff;
       const orderDate = normalizeDate(order.order_date);
-      const orderShift = String(order.shift || '').trim();
-      const orderProduct = normalizeString(order.product);
-      const orderCountry = normalizeString(order.country);
+      const orderProduct = normalizeString(order.product || order.san_pham);
+      const orderCountry = normalizeString(order.country || order.thi_truong || order.market);
+
+      // Check each condition separately
+      const nameMatch = reportName && orderSaleStaff ? namesMatch(orderSaleStaff, reportName) : false;
+      
+      // Sale name matching (if exists)
+      let saleNameMatch = true;
+      if (reportSaleName) {
+        const normalizedReportSaleName = normalizeNameForMatch(reportSaleName);
+        const normalizedOrderSaleStaff = normalizeNameForMatch(orderSaleStaff);
+        if (normalizedReportSaleName && normalizedOrderSaleStaff) {
+          saleNameMatch = normalizedReportSaleName === normalizedOrderSaleStaff || 
+                         normalizedReportSaleName.includes(normalizedOrderSaleStaff) || 
+                         normalizedOrderSaleStaff.includes(normalizedReportSaleName);
+        }
+      }
+      
+      const dateMatch = reportDate && orderDate ? reportDate === orderDate : false;
+      const productMatch = reportProduct ? (reportProduct === orderProduct) : true;
+      const marketMatch = reportMarket ? (reportMarket === orderCountry) : true;
 
       const debug: any = {
         order_id: order.id,
+        order_sale_staff: orderSaleStaff,
+        order_date: order.order_date,
+        order_product: order.product,
+        order_country: order.country,
         checks: {
           name: {
             report: reportName,
-            order: orderName,
-            match: reportName === orderName,
+            order: orderSaleStaff,
+            normalized_report: normalizeNameForMatch(reportName),
+            normalized_order: normalizeNameForMatch(orderSaleStaff),
+            match: nameMatch,
+          },
+          sale_name: {
+            report: reportSaleName || '(empty - skipped)',
+            match: saleNameMatch,
+            skipped: !reportSaleName,
           },
           date: {
             report: reportDate,
             order: orderDate,
-            match: reportDate === orderDate,
-          },
-          shift: {
-            report: reportShift,
-            order: orderShift,
-            match: reportShift ? (orderShift.toLowerCase().includes(reportShift.toLowerCase())) : true,
+            match: dateMatch,
           },
           product: {
             report: reportProduct || '(empty - skipped)',
             order: orderProduct,
-            match: reportProduct ? (reportProduct === orderProduct) : true,
+            match: productMatch,
             skipped: !reportProduct,
           },
           market: {
             report: reportMarket || '(empty - skipped)',
             order: orderCountry,
-            match: reportMarket ? (reportMarket === orderCountry) : true,
+            match: marketMatch,
             skipped: !reportMarket,
           },
         },
       };
 
-      const allMatch = 
-        debug.checks.name.match &&
-        debug.checks.date.match &&
-        debug.checks.shift.match &&
-        debug.checks.product.match &&
-        debug.checks.market.match;
+      const allMatch = nameMatch && saleNameMatch && dateMatch && productMatch && marketMatch;
 
       debug.final_match = allMatch;
 
@@ -136,15 +161,14 @@ export default async function handler(
       success: true,
       sales_report: {
         id: salesReport.id,
-        name: salesReport.name || salesReport.ten || salesReport.Tên,
-        date: salesReport.date || salesReport.ngay || salesReport.Ngày,
-        shift: reportShift,
+        name: reportName,
+        date: reportDate,
         product: salesReport.product || salesReport.san_pham || salesReport.Sản_phẩm,
         market: salesReport.market || salesReport.thi_truong || salesReport.Thị_trường,
+        sale_name: reportSaleName || null,
         normalized: {
-          name: reportName,
+          name: normalizeNameForMatch(reportName),
           date: reportDate,
-          shift: reportShift,
           product: reportProduct,
           market: reportMarket,
         },
