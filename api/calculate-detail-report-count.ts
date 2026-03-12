@@ -3,8 +3,8 @@ import { createClient } from '@supabase/supabase-js';
 import {
   fetchAllOrders,
   normalizeDate,
-  calculateOrderStatistics,
-  updateSalesReportStatistics,
+  calculateDetailReportStatistics,
+  updateDetailReportStatistics,
   namesMatch,
 } from './utils';
 
@@ -42,21 +42,22 @@ export default async function handler(
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     // Get query parameters
-    const { recordId, date, recalculateAll, name, sale_staff } = req.query;
+    const { recordId, date, recalculateAll, name, ten, Tên } = req.query;
     
-    // Support both 'name' and 'sale_staff' parameters
-    const nameFilter = (name || sale_staff) as string | undefined;
+    // Support multiple name parameter variations
+    const nameFilter = (name || ten || Tên) as string | undefined;
 
     // Determine which records to process
-    let salesReportsQuery = supabase
-      .from('sales_reports')
+    let detailReportsQuery = supabase
+      .from('detail_reports')
       .select('*');
 
-    const limit = recalculateAll === 'true' ? 10000 : 1000;
+    // Increase limit to handle all nhân sự
+    const limit = recalculateAll === 'true' ? 50000 : 10000;
 
     if (recordId) {
       // Calculate for a specific record
-      salesReportsQuery = salesReportsQuery.eq('id', recordId as string).limit(1);
+      detailReportsQuery = detailReportsQuery.eq('id', recordId as string).limit(1);
     } else if (date) {
       // Calculate for all records on a specific date
       const normalizedDate = normalizeDate(date as string);
@@ -67,25 +68,26 @@ export default async function handler(
           error: 'Invalid date',
         });
       }
-      salesReportsQuery = salesReportsQuery.eq('date', normalizedDate).limit(limit);
+      // Don't filter by date at database level - filter in memory instead
+      // This avoids column name issues
+      detailReportsQuery = detailReportsQuery.limit(limit);
     } else if (recalculateAll === 'true') {
-      // Recalculate all records
-      salesReportsQuery = salesReportsQuery.limit(limit);
+      // Recalculate all records (no limit or very high limit)
+      detailReportsQuery = detailReportsQuery.limit(50000);
     } else {
-      // Default: calculate for records without order_count or with order_count = 0/null
-      salesReportsQuery = salesReportsQuery
-        .or('order_count.is.null,order_count.eq.0')
-        .limit(limit);
+      // Default: calculate for ALL records (not just those without order_count)
+      // This ensures all nhân sự are calculated
+      detailReportsQuery = detailReportsQuery.limit(limit);
     }
 
-    // Fetch sales reports
-    const { data: salesReports, error: salesReportsError } = await salesReportsQuery;
+    // Fetch detail reports
+    const { data: detailReports, error: detailReportsError } = await detailReportsQuery;
 
-    if (salesReportsError) {
-      throw new Error(`Error fetching sales_reports: ${salesReportsError.message}`);
+    if (detailReportsError) {
+      throw new Error(`Error fetching detail_reports: ${detailReportsError.message}`);
     }
 
-    if (!salesReports || salesReports.length === 0) {
+    if (!detailReports || detailReports.length === 0) {
       return res.status(200).json({
         success: true,
         message: 'No records found to calculate',
@@ -96,18 +98,40 @@ export default async function handler(
       });
     }
 
+    // Filter by date if provided (filter in memory to avoid column name issues)
+    let filteredDetailReports = detailReports;
+    if (date) {
+      const normalizedDate = normalizeDate(date as string);
+      if (normalizedDate) {
+        filteredDetailReports = detailReports.filter((dr: any) => {
+          const drDate = normalizeDate(dr.Ngày || dr.ngay || dr.date || dr.Ngay);
+          return drDate === normalizedDate;
+        });
+
+        if (filteredDetailReports.length === 0) {
+          return res.status(200).json({
+            success: true,
+            message: `No records found for date: ${normalizedDate}`,
+            updated: 0,
+            errors: 0,
+            total: 0,
+            data: [],
+          });
+        }
+      }
+    }
+
     // Filter by name if provided (using fuzzy matching)
-    let filteredSalesReports = salesReports;
     if (nameFilter) {
-      filteredSalesReports = salesReports.filter((sr: any) => {
-        const reportName = sr.name || sr.ten || sr.Tên || sr.nhanvien || sr.nhan_vien;
+      filteredDetailReports = filteredDetailReports.filter((dr: any) => {
+        const reportName = dr.Tên || dr.ten || dr.name || dr.nhanvien || dr.nhan_vien;
         if (!reportName) {
           return false;
         }
         return namesMatch(reportName, nameFilter);
       });
 
-      if (filteredSalesReports.length === 0) {
+      if (filteredDetailReports.length === 0) {
         return res.status(200).json({
           success: true,
           message: `No records found matching name: ${nameFilter}`,
@@ -119,9 +143,9 @@ export default async function handler(
       }
     }
 
-    // Calculate date range from filtered sales reports for optimized fetching
-    const dates = filteredSalesReports
-      .map((sr: any) => normalizeDate(sr.date || sr.ngay || sr.Ngày))
+    // Calculate date range from filtered detail reports for optimized fetching
+    const dates = filteredDetailReports
+      .map((dr: any) => normalizeDate(dr.Ngày || dr.ngay || dr.date))
       .filter((d: string | null): d is string => d !== null)
       .sort();
 
@@ -134,36 +158,40 @@ export default async function handler(
     const allOrders = await fetchAllOrders(supabase, 10000, dateFilter);
     console.log(`Fetched ${allOrders.length} orders`);
 
-    // Calculate order_count for each filtered sales report
+    // Calculate order_count for each filtered detail report
     const updatedRecords: any[] = [];
     let errors = 0;
 
-    for (const salesReport of filteredSalesReports) {
+    for (const detailReport of filteredDetailReports) {
       try {
         // Calculate all statistics
-        const stats = calculateOrderStatistics(allOrders, salesReport);
+        const stats = calculateDetailReportStatistics(allOrders, detailReport);
 
         // Update with fallback payloads so missing columns do not break the entire job.
-        const updateResult = await updateSalesReportStatistics(
+        const updateResult = await updateDetailReportStatistics(
           supabase,
-          salesReport.id,
+          detailReport.id,
           stats
         );
 
         if (!updateResult.ok) {
-          console.error(`Error updating record ${salesReport.id}:`, updateResult.error);
+          console.error(`Error updating record ${detailReport.id}:`, updateResult.error);
           errors++;
         } else {
           updatedRecords.push({
-            id: salesReport.id,
-            name: salesReport.name || salesReport.ten || salesReport.Tên,
-            date: salesReport.date || salesReport.ngay || salesReport.Ngày,
-            shift: salesReport.shift || salesReport.ca || salesReport.casle || '',
-            product: salesReport.product || salesReport.san_pham || salesReport.Sản_phẩm || '',
-            market: salesReport.market || salesReport.thi_truong || salesReport.Thị_trường || '',
+            id: detailReport.id,
+            Tên: detailReport.Tên || detailReport.ten || detailReport.name || '',
+            Ngày: detailReport.Ngày || detailReport.ngay || detailReport.date || '',
+            ca: detailReport.ca || detailReport.shift || detailReport.camkt || '',
+            Sản_phẩm: detailReport.Sản_phẩm || detailReport.san_pham || detailReport.product || detailReport.productmkt || '',
+            Thị_trường: detailReport.Thị_trường || detailReport.thi_truong || detailReport.market || detailReport.marketmkt || '',
+            "Số đơn thực tế": stats.order_count,
+            "Doanh thu chốt thực tế": stats.revenue_actual,
+            "Doanh số hoàn hủy thực tế": stats.revenue_cancel_actual,
+            "Số đơn hoàn hủy thực tế": stats.order_cancel_count_actual,
+            // Keep English names for backward compatibility
             order_count: stats.order_count,
             order_cancel_count_actual: stats.order_cancel_count_actual,
-            order_cancel_count: stats.order_cancel_count_actual,
             revenue_actual: stats.revenue_actual,
             revenue_cancel_actual: stats.revenue_cancel_actual,
             order_success_count: stats.order_success_count,
@@ -171,21 +199,21 @@ export default async function handler(
           });
         }
       } catch (error: any) {
-        console.error(`Error processing record ${salesReport.id}:`, error);
+        console.error(`Error processing record ${detailReport.id}:`, error);
         errors++;
       }
     }
 
     return res.status(200).json({
       success: true,
-      message: `Successfully calculated order_count for ${updatedRecords.length} records${nameFilter ? ` (filtered by name: ${nameFilter})` : ''}`,
+      message: `Successfully calculated order_count for ${updatedRecords.length} detail reports${nameFilter ? ` (filtered by name: ${nameFilter})` : ''}`,
       updated: updatedRecords.length,
       errors: errors,
-      total: filteredSalesReports.length,
+      total: filteredDetailReports.length,
       data: updatedRecords,
     });
   } catch (error: any) {
-    console.error('Error in calculate-order-count:', error);
+    console.error('Error in calculate-detail-report-count:', error);
     return res.status(500).json({
       success: false,
       message: error.message || 'Internal server error',

@@ -3,8 +3,7 @@
   "buildCommand": "npm install",
   "functions": {
     "api/**/*.ts": {
-      "maxDuration": 60,
-      "runtime": "@vercel/node"
+      "maxDuration": 60
     }
   }
 }
