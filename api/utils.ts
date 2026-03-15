@@ -260,7 +260,7 @@ export async function fetchAllOrders(
   while (hasMore) {
     let query = supabase
       .from('orders')
-      .select('id, sale_staff, order_date, shift, product, country, check_result, total_amount_vnd, total_vnd');
+      .select('id, sale_staff, order_date, shift, product, country, check_result, total_amount_vnd, total_vnd, delivery_status, delivery_status_nb, tracking_code, marketing_staff');
 
     // Apply date filter if provided
     if (dateFilter?.from) {
@@ -515,7 +515,7 @@ export function orderMatchesDetailReport(
 
 /**
  * Calculate order statistics for a detail report
- * Returns: order_count, order_cancel_count_actual, revenue_actual, revenue_cancel_actual, order_success_count
+ * Returns: order_count, order_cancel_count_actual, revenue_actual, revenue_cancel_actual, order_success_count, revenue_after_cancel_actual, revenue_shipped_actual
  */
 export function calculateDetailReportStatistics(
   orders: any[],
@@ -526,11 +526,14 @@ export function calculateDetailReportStatistics(
   revenue_actual: number;
   revenue_cancel_actual: number;
   order_success_count: number;
+  revenue_after_cancel_actual: number;
+  revenue_shipped_actual: number;
 } {
   let orderCount = 0;
   let orderCancelCount = 0;
   let revenueActual = 0;
   let revenueCancelActual = 0;
+  let revenueShippedActual = 0;
 
   const reportName = detailReport.Tên || detailReport.ten || detailReport.name || detailReport.nhanvien || detailReport.nhan_vien;
   const reportDate = normalizeDate(detailReport.Ngày || detailReport.ngay || detailReport.date);
@@ -551,6 +554,13 @@ export function calculateDetailReportStatistics(
         orderCancelCount++;
         revenueCancelActual += amount;
       }
+
+      // Check if order is shipped (delivery_status = "Delivered" or has tracking_code)
+      const deliveryStatus = normalizeString(order.delivery_status || order.delivery_status_nb || '');
+      const hasTracking = order.tracking_code && String(order.tracking_code).trim() !== '';
+      if (deliveryStatus === 'delivered' || hasTracking) {
+        revenueShippedActual += amount;
+      }
     }
   }
 
@@ -559,6 +569,7 @@ export function calculateDetailReportStatistics(
   }
 
   const orderSuccessCount = orderCount - orderCancelCount;
+  const revenueAfterCancelActual = revenueActual - revenueCancelActual;
 
   return {
     order_count: orderCount,
@@ -566,6 +577,8 @@ export function calculateDetailReportStatistics(
     revenue_actual: revenueActual,
     revenue_cancel_actual: revenueCancelActual,
     order_success_count: orderSuccessCount,
+    revenue_after_cancel_actual: revenueAfterCancelActual,
+    revenue_shipped_actual: revenueShippedActual,
   };
 }
 
@@ -582,6 +595,8 @@ export async function updateDetailReportStatistics(
     revenue_actual: number;
     revenue_cancel_actual: number;
     order_success_count: number;
+    revenue_after_cancel_actual: number;
+    revenue_shipped_actual: number;
   }
 ): Promise<{ ok: boolean; usedFields: string[]; error?: string }> {
   // Try multiple column name variations for detail_reports
@@ -592,6 +607,8 @@ export async function updateDetailReportStatistics(
       "Doanh thu chốt thực tế": Number.isFinite(stats.revenue_actual) ? Number(stats.revenue_actual) : 0,
       "Doanh số hoàn hủy thực tế": Number.isFinite(stats.revenue_cancel_actual) ? Number(stats.revenue_cancel_actual) : 0,
       "Số đơn hoàn hủy thực tế": Number(stats.order_cancel_count_actual) || 0,
+      "Doanh số sau hoàn hủy thực tế": Number.isFinite(stats.revenue_after_cancel_actual) ? Number(stats.revenue_after_cancel_actual) : 0,
+      "Doanh số đi thực tế": Number.isFinite(stats.revenue_shipped_actual) ? Number(stats.revenue_shipped_actual) : 0,
     },
     // Try English column names
     {
@@ -600,6 +617,8 @@ export async function updateDetailReportStatistics(
       revenue_actual: Number.isFinite(stats.revenue_actual) ? Number(stats.revenue_actual) : 0,
       revenue_cancel_actual: Number.isFinite(stats.revenue_cancel_actual) ? Number(stats.revenue_cancel_actual) : 0,
       order_success_count: Number(stats.order_success_count) || 0,
+      revenue_after_cancel_actual: Number.isFinite(stats.revenue_after_cancel_actual) ? Number(stats.revenue_after_cancel_actual) : 0,
+      revenue_shipped_actual: Number.isFinite(stats.revenue_shipped_actual) ? Number(stats.revenue_shipped_actual) : 0,
     },
     // Try alternative names
     {

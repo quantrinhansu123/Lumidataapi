@@ -185,11 +185,11 @@ PARAM_TO_COLUMN_MAPPING = {
 
 # Các cột của bảng detail_reports
 ALL_DETAIL_REPORTS_COLUMNS = {
-    "id", "ten", "ngay", "ca", "san_pham", "thi_truong", "team", "cpqc", "so_mess_cmt",
+    "id", "ten", "ngay", "ca", "san_pham", "thi_truong", "team", "cpqc", "so_mess_cmt", "check_result",
     # Các tên có thể khác
-    "name", "date", "shift", "product", "market", "so_mess_cmt",
+    "name", "date", "shift", "product", "market", "so_mess_cmt", "checkresult", "trang_thai",
     # Tên với dấu gạch dưới
-    "Tên", "Ngày", "ca", "Sản_phẩm", "Thị_trường", "Team", "CPQC", "Số_Mess_Cmt"
+    "Tên", "Ngày", "ca", "Sản_phẩm", "Thị_trường", "Team", "CPQC", "Số_Mess_Cmt", "Check_Result"
 }
 
 # Cột trả về từ detail_reports API - lấy tất cả các cột có thể
@@ -204,6 +204,7 @@ DETAIL_REPORTS_RESPONSE_LABELS = {
     "team": "team",
     "cpqc": "cpqc",
     "so_mess_cmt": "so_mess_cmt",
+    "check_result": "check_result",
     # Các tên có thể khác
     "name": "ten",
     "date": "ngay",
@@ -213,6 +214,9 @@ DETAIL_REPORTS_RESPONSE_LABELS = {
     "Team": "team",
     "CPQC": "cpqc",
     "Số_Mess_Cmt": "so_mess_cmt",
+    "checkresult": "check_result",
+    "trang_thai": "check_result",
+    "Check_Result": "check_result",
     "Tên": "ten",
     "Ngày": "ngay",
     "Sản_phẩm": "san_pham",
@@ -220,7 +224,8 @@ DETAIL_REPORTS_RESPONSE_LABELS = {
 }
 
 DETAIL_REPORTS_CANONICAL_COLUMNS = {
-    "ten", "ngay", "ca", "san_pham", "thi_truong", "team"
+    "ten", "ngay", "ca", "san_pham", "thi_truong", "team", "check_result",
+    "so_don_hoan_huy", "order_cancel_count_actual", "Số đơn hoàn hủy thực tế"
 }
 
 DETAIL_REPORTS_PARAM_MAPPING = {
@@ -240,6 +245,13 @@ DETAIL_REPORTS_PARAM_MAPPING = {
     "thitruong": "thi_truong",
     "date": "ngay",
     "report_date": "ngay",
+    "check_result": "check_result",
+    "checkresult": "check_result",
+    "trang_thai": "check_result",
+    "so_don_hoan_huy": "so_don_hoan_huy",
+    "order_cancel_count_actual": "order_cancel_count_actual",
+    "Số đơn hoàn hủy thực tế": "Số đơn hoàn hủy thực tế",
+    "so_don_hoan_huy_thuc_te": "Số đơn hoàn hủy thực tế",
 }
 
 # Cấu hình cho bảng sales_reports (tương tự detail_reports)
@@ -373,6 +385,41 @@ def normalize_date_value(value: Any) -> Optional[str]:
     return parse_date_only(raw)
 
 
+def _get_numeric_value(row: dict, col: str) -> float:
+    """Get numeric value from row, trying multiple column name variations."""
+    # Try Vietnamese name first
+    value = row.get("Số đơn hoàn hủy thực tế") or row.get("so_don_hoan_huy_thuc_te")
+    if value is not None:
+        try:
+            return float(value)
+        except (ValueError, TypeError):
+            pass
+    
+    # Try English names
+    value = row.get("order_cancel_count_actual") or row.get("so_don_hoan_huy")
+    if value is not None:
+        try:
+            return float(value)
+        except (ValueError, TypeError):
+            pass
+    
+    # Try direct column name
+    value = row.get(col)
+    if value is not None:
+        try:
+            return float(value)
+        except (ValueError, TypeError):
+            pass
+    
+    return 0.0
+
+
+def _has_numeric_data(row: dict, col: str) -> bool:
+    """Check if row has numeric data (not null, not 0) for the given column."""
+    value = _get_numeric_value(row, col)
+    return value is not None and value != 0 and value != 0.0
+
+
 def apply_detail_reports_filters_in_memory(
     reports: List[dict],
     filters: Dict[str, Any],
@@ -397,6 +444,16 @@ def apply_detail_reports_filters_in_memory(
         if mapped_col in DETAIL_REPORTS_CANONICAL_COLUMNS:
             normalized_filters[mapped_col] = val
 
+    # List of numeric columns that need special handling
+    numeric_columns = {
+        "so_don_hoan_huy", "order_cancel_count_actual", "Số đơn hoàn hủy thực tế",
+        "so_don_thuc_te", "order_count", "Số đơn thực tế",
+        "doanh_thu_chot_thuc_te", "revenue_actual", "Doanh thu chốt thực tế",
+        "doanh_so_hoan_huy_thuc_te", "revenue_cancel_actual", "Doanh số hoàn hủy thực tế",
+        "doanh_so_sau_hoan_huy_thuc_te", "revenue_after_cancel_actual", "Doanh số sau hoàn hủy thực tế",
+        "doanh_so_di_thuc_te", "revenue_shipped_actual", "Doanh số đi thực tế",
+    }
+    
     for col, val in normalized_filters.items():
         if isinstance(val, list):
             if col == "ngay":
@@ -412,6 +469,36 @@ def apply_detail_reports_filters_in_memory(
                     row for row in filtered
                     if normalize_date_value(row.get("ngay")) in allowed_dates
                 ]
+            elif col in numeric_columns:
+                # Handle numeric columns
+                try:
+                    allowed_values = []
+                    for item in val:
+                        item_str = str(item).strip().lower()
+                        if item_str == "has_data" or item_str == "co_du_lieu" or item_str == "có dữ liệu":
+                            # Filter for records with data (not null, not 0)
+                            filtered = [
+                                row for row in filtered
+                                if _has_numeric_data(row, col)
+                            ]
+                            break
+                        else:
+                            num_val = float(item_str)
+                            allowed_values.append(num_val)
+                    
+                    if allowed_values:
+                        filtered = [
+                            row for row in filtered
+                            if _get_numeric_value(row, col) in allowed_values
+                        ]
+                except (ValueError, TypeError):
+                    # If not a number, treat as string
+                    allowed_values = [str(item).strip() for item in val if str(item).strip()]
+                    allowed_values_lower = {v.lower(): v for v in allowed_values}
+                    filtered = [
+                        row for row in filtered
+                        if str(row.get(col) or "").strip().lower() in allowed_values_lower
+                    ]
             else:
                 # Build allowed values with case-insensitive lookup
                 allowed_values = [
@@ -433,6 +520,29 @@ def apply_detail_reports_filters_in_memory(
                 filtered = [
                     row for row in filtered
                     if normalize_date_value(row.get("ngay")) == date_str
+                ]
+        elif col in numeric_columns:
+            # Handle numeric columns
+            val_str = str(val).strip().lower()
+            try:
+                if val_str == "has_data" or val_str == "co_du_lieu" or val_str == "có dữ liệu":
+                    # Filter for records with data (not null, not 0)
+                    filtered = [
+                        row for row in filtered
+                        if _has_numeric_data(row, col)
+                    ]
+                else:
+                    num_val = float(val_str)
+                    filtered = [
+                        row for row in filtered
+                        if _get_numeric_value(row, col) == num_val
+                    ]
+            except (ValueError, TypeError):
+                # If not a number, treat as string
+                target = val_str
+                filtered = [
+                    row for row in filtered
+                    if str(row.get(col) or "").strip().lower() == target
                 ]
         else:
             target = str(val).strip().lower()
@@ -1078,8 +1188,19 @@ async def get_detail_reports(
 ) -> Any:
     """
     Lấy danh sách detail_reports với bộ lọc theo query params.
-    Các trường có thể filter: ten, ngay, ca, san_pham, thi_truong, team, nhan_su (danh sách tên cách nhau bởi dấu phẩy)
-    Ví dụ: /detail_reports?nhan_su=Nguyễn Văn A,Trần Thị B&from_date=01/02/2026&to_date=10/02/2026
+    Các trường có thể filter: ten, ngay, ca, san_pham, thi_truong, team, nhan_su, check_result (danh sách tên cách nhau bởi dấu phẩy)
+    
+    Filter số đơn hoàn hủy:
+    - so_don_hoan_huy=has_data hoặc so_don_hoan_huy=co_du_lieu: Lọc những records có dữ liệu (không null, không 0)
+    - so_don_hoan_huy=1: Lọc những records có giá trị = 1
+    - order_cancel_count_actual=has_data: Tương tự
+    - Số đơn hoàn hủy thực tế=has_data: Tương tự
+    
+    Ví dụ: 
+    - /detail_reports?nhan_su=Nguyễn Văn A,Trần Thị B&from_date=01/02/2026&to_date=10/02/2026
+    - /detail_reports?check_result=Hủy
+    - /detail_reports?so_don_hoan_huy=has_data
+    - /detail_reports?so_don_hoan_huy=has_data&team=Team A
     """
     params = dict(request.query_params)
     params.pop("limit", None)
@@ -1228,6 +1349,161 @@ async def get_sales_reports(
         )
 
 
+@app.get("/employees")
+async def get_employees(
+    team: Optional[str] = Query(None, description="Lọc theo team (hỗ trợ nhiều giá trị cách nhau bởi dấu phẩy)"),
+    position: Optional[str] = Query(None, description="Lọc theo vị trí (hỗ trợ nhiều giá trị cách nhau bởi dấu phẩy)"),
+    branch: Optional[str] = Query(None, description="Lọc theo chi nhánh (hỗ trợ nhiều giá trị cách nhau bởi dấu phẩy)"),
+    email: Optional[str] = Query(None, description="Lọc theo email"),
+    name: Optional[str] = Query(None, description="Tìm kiếm theo tên (fuzzy search)"),
+    limit: Optional[int] = Query(None, ge=1, le=10000, description="Số bản ghi tối đa"),
+    offset: int = Query(0, ge=0, description="Vị trí bắt đầu"),
+) -> Any:
+    """
+    Lấy danh sách nhân viên từ bảng users với bộ lọc.
+    
+    Hỗ trợ các filter:
+    - team: Lọc theo team (hỗ trợ nhiều giá trị: team=Team1,Team2)
+    - position: Lọc theo vị trí (hỗ trợ nhiều giá trị)
+    - branch: Lọc theo chi nhánh (hỗ trợ nhiều giá trị)
+    - email: Lọc theo email chính xác
+    - name: Tìm kiếm theo tên (fuzzy search, không phân biệt hoa thường)
+    - limit: Số bản ghi tối đa (mặc định: 10000)
+    - offset: Vị trí bắt đầu (mặc định: 0)
+    
+    Ví dụ:
+    - /employees
+    - /employees?team=HN-MKT
+    - /employees?name=Nguyễn&position=Marketing&branch=Hà Nội
+    - /employees?team=HN-MKT,HO-MKT&limit=100&offset=0
+    """
+    try:
+        supabase = get_supabase()
+        
+        # Build query
+        query = supabase.table("users").select("*")
+        
+        # Apply team filter
+        if team:
+            teams = [t.strip() for t in str(team).split(",") if t.strip()]
+            if len(teams) == 1:
+                query = query.eq("team", teams[0])
+            else:
+                query = query.in_("team", teams)
+        
+        # Apply email filter
+        if email:
+            query = query.eq("email", email)
+        
+        # Apply name filter (fuzzy search)
+        if name:
+            name_str = str(name).strip()
+            # Try multiple column names for name search
+            # Note: Supabase Python client doesn't support .or() with ilike directly
+            # So we'll do fuzzy search in memory after fetching
+            pass  # Will filter in memory
+        
+        # Apply pagination
+        limit_num = limit if limit else 10000
+        offset_num = offset
+        
+        if limit_num > 0:
+            query = query.range(offset_num, offset_num + limit_num - 1)
+        
+        # Execute query
+        result = query.execute()
+        users = result.data or []
+        
+        if not users:
+            return JSONResponse(
+                content={
+                    "success": True,
+                    "message": "No users found",
+                    "total": 0,
+                    "employeeData": [],
+                },
+                status_code=200,
+            )
+        
+        # Filter in memory for name, position, and branch
+        filtered_users = users
+        
+        # Filter by name (fuzzy search)
+        if name:
+            name_lower = str(name).strip().lower()
+            filtered_users = [
+                user for user in filtered_users
+                if name_lower in str(user.get("Họ Và Tên") or user.get("full_name") or user.get("name") or user.get("ho_ten") or user.get("ten") or user.get("ho_va_ten") or "").lower()
+            ]
+        
+        # Filter by position
+        if position and filtered_users:
+            positions = [p.strip() for p in str(position).split(",") if p.strip()]
+            filtered_users = [
+                user for user in filtered_users
+                if any(
+                    p.lower() in str(user.get("Vị trí") or user.get("position") or user.get("vi_tri") or user.get("chuc_vu") or "").lower() or
+                    str(user.get("Vị trí") or user.get("position") or user.get("vi_tri") or user.get("chuc_vu") or "").lower() in p.lower()
+                    for p in positions
+                )
+            ]
+        
+        # Filter by branch
+        if branch and filtered_users:
+            branches = [b.strip() for b in str(branch).split(",") if b.strip()]
+            filtered_users = [
+                user for user in filtered_users
+                if any(
+                    b.lower() in str(user.get("chi nhánh") or user.get("chi_nhanh") or user.get("branch") or "").lower() or
+                    str(user.get("chi nhánh") or user.get("chi_nhanh") or user.get("branch") or "").lower() in b.lower()
+                    for b in branches
+                )
+            ]
+        
+        # Map database columns to Vietnamese response format
+        employee_data = []
+        for user in filtered_users:
+            # Try multiple column name variations
+            full_name = user.get("Họ Và Tên") or user.get("full_name") or user.get("name") or user.get("ho_ten") or user.get("ten") or user.get("ho_va_ten") or ""
+            email_val = user.get("email") or user.get("Email") or ""
+            team_val = user.get("team") or user.get("Team") or ""
+            position_val = user.get("Vị trí") or user.get("position") or user.get("vi_tri") or user.get("chuc_vu") or ""
+            branch_val = user.get("chi nhánh") or user.get("chi_nhanh") or user.get("branch") or ""
+            link_anh = user.get("avatar_url") or user.get("link_anh") or ""
+            ca_val = user.get("ca") or user.get("Ca") or user.get("shift") or user.get("shift_ca") or ""
+            
+            employee_data.append({
+                "id": user.get("id") or "",
+                "Họ Và Tên": full_name,
+                "Email": email_val,
+                "Team": team_val,
+                "Vị trí": position_val,
+                "chi nhánh": branch_val,
+                "link_anh": link_anh,
+                "ca": ca_val,
+            })
+        
+        return JSONResponse(
+            content={
+                "success": True,
+                "message": f"Successfully fetched {len(employee_data)} employees",
+                "total": len(employee_data),
+                "employeeData": employee_data,
+            },
+            status_code=200,
+        )
+    except Exception as e:
+        return JSONResponse(
+            content={
+                "success": False,
+                "message": str(e),
+                "error": str(e),
+                "employeeData": [],
+            },
+            status_code=500,
+        )
+
+
 @app.get("/")
 def root():
     return {
@@ -1235,7 +1511,8 @@ def root():
         "docs": "/docs",
         "orders": "GET /orders?created_at=22/12/2026&city=Carson",
         "detail_reports": "GET /detail_reports?nhan_su=Nguyễn Văn A,Trần Thị B&ngay=01/02/2026",
-        "sales_reports": "GET /sales_reports?teamsale=Team%20A&from_date=01/02/2026&to_date=10/02/2026&date_column=date"
+        "sales_reports": "GET /sales_reports?teamsale=Team%20A&from_date=01/02/2026&to_date=10/02/2026&date_column=date",
+        "employees": "GET /employees?team=HN-MKT&name=Nguyễn&position=Marketing"
     }
 
 

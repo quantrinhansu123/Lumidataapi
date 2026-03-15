@@ -3,9 +3,9 @@ import { createClient } from '@supabase/supabase-js';
 import {
   fetchAllOrders,
   normalizeDate,
-  calculateDetailReportStatistics,
-  updateDetailReportStatistics,
   namesMatch,
+  normalizeString,
+  matchesShiftForDetailReport,
 } from './utils';
 
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
@@ -13,6 +13,153 @@ const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   console.error('Missing Supabase configuration');
+}
+
+/**
+ * Check if an order matches a detail report (for cancel count calculation)
+ * Only checks: name, date, shift, product, market
+ * Does NOT check check_result here - we'll filter by check_result separately
+ */
+function orderMatchesForCancelCount(
+  order: any,
+  detailReport: any,
+  debug: boolean = false
+): boolean {
+  // 1. Name matching: Tên (detail_reports) = marketing_staff (orders)
+  const reportName = detailReport.Tên || detailReport.ten || detailReport.name || detailReport.nhanvien || detailReport.nhan_vien;
+  const orderMarketingStaff = order.marketing_staff || order.marketing || order.staff;
+
+  if (!reportName || !orderMarketingStaff) {
+    if (debug) console.log(`[MATCH DEBUG] Missing name: reportName="${reportName}", orderMarketingStaff="${orderMarketingStaff}"`);
+    return false;
+  }
+
+  const nameMatches = namesMatch(orderMarketingStaff, reportName);
+  if (!nameMatches) {
+    if (debug) console.log(`[MATCH DEBUG] Name mismatch: report="${reportName}" vs order="${orderMarketingStaff}"`);
+    return false;
+  }
+
+  // 2. Date matching: Ngày (detail_reports) = order_date (orders)
+  const reportDate = normalizeDate(detailReport.Ngày || detailReport.ngay || detailReport.date);
+  const orderDate = normalizeDate(order.order_date || order.ngay || order.date);
+  if (!reportDate || !orderDate || reportDate !== orderDate) {
+    if (debug) console.log(`[MATCH DEBUG] Date mismatch: report="${reportDate}" vs order="${orderDate}"`);
+    return false;
+  }
+
+  // 3. Shift matching: ca (detail_reports) = shift (orders) with special logic
+  const reportShift = detailReport.ca || detailReport.shift || detailReport.camkt;
+  const orderShift = order.shift || order.ca;
+  if (!reportShift || !orderShift) {
+    if (debug) console.log(`[MATCH DEBUG] Missing shift: report="${reportShift}", order="${orderShift}"`);
+    return false;
+  }
+
+  // Use the same shift matching logic as detail reports
+  const shiftMatches = matchesShiftForDetailReport(reportShift, orderShift);
+  if (!shiftMatches) {
+    if (debug) console.log(`[MATCH DEBUG] Shift mismatch: report="${reportShift}" vs order="${orderShift}"`);
+    return false;
+  }
+
+  // 4. Product matching (optional - skip if empty)
+  const reportProduct = normalizeString(detailReport.Sản_phẩm || detailReport.san_pham || detailReport.product || detailReport.productmkt);
+  if (reportProduct) {
+    const orderProduct = normalizeString(order.product || order.san_pham);
+    if (reportProduct !== orderProduct) {
+      if (debug) console.log(`[MATCH DEBUG] Product mismatch: report="${reportProduct}" vs order="${orderProduct}"`);
+      return false;
+    }
+  }
+
+  // 5. Market matching (optional - skip if empty)
+  const reportMarket = normalizeString(detailReport.Thị_trường || detailReport.thi_truong || detailReport.market || detailReport.marketmkt);
+  if (reportMarket) {
+    const orderCountry = normalizeString(order.country || order.thi_truong || order.market);
+    if (reportMarket !== orderCountry) {
+      if (debug) console.log(`[MATCH DEBUG] Market mismatch: report="${reportMarket}" vs order="${orderCountry}"`);
+      return false;
+    }
+  }
+
+  if (debug) console.log(`[MATCH DEBUG] ✅ All conditions matched for order ${order.id}`);
+  return true;
+}
+
+/**
+ * Calculate cancel count for a detail report
+ * Counts orders that match AND have check_result = "Hủy"
+ */
+function calculateCancelCount(
+  orders: any[],
+  detailReport: any
+): number {
+  let cancelCount = 0;
+
+  for (const order of orders) {
+    // Check if order matches detail report
+    const matches = orderMatchesForCancelCount(order, detailReport, false);
+    
+    if (matches) {
+      // Check if order is cancelled
+      const checkResult = normalizeString(order.check_result);
+      if (checkResult === 'hủy') {
+        cancelCount++;
+      }
+    }
+  }
+
+  return cancelCount;
+}
+
+/**
+ * Update cancel count in detail report
+ */
+async function updateCancelCount(
+  supabase: any,
+  reportId: string,
+  cancelCount: number
+): Promise<{ ok: boolean; usedFields: string[]; error?: string }> {
+  // Try multiple column name variations
+  const payloads: Array<Record<string, number>> = [
+    // Try Vietnamese column names first
+    {
+      "Số đơn hoàn hủy thực tế": Number(cancelCount) || 0,
+    },
+    // Try English column names
+    {
+      order_cancel_count_actual: Number(cancelCount) || 0,
+    },
+    // Try other variations
+    {
+      so_don_hoan_huy: Number(cancelCount) || 0,
+    },
+    {
+      "so_don_hoan_huy_thuc_te": Number(cancelCount) || 0,
+    },
+  ];
+
+  const usedFields: string[] = [];
+
+  for (const payload of payloads) {
+    const { data, error } = await supabase
+      .from('detail_reports')
+      .update(payload)
+      .eq('id', reportId)
+      .select();
+
+    if (!error) {
+      usedFields.push(...Object.keys(payload));
+      return { ok: true, usedFields };
+    }
+  }
+
+  return {
+    ok: false,
+    usedFields: [],
+    error: 'Could not update any column. Tried: ' + payloads.map(p => Object.keys(p).join(', ')).join('; '),
+  };
 }
 
 export default async function handler(
@@ -52,7 +199,6 @@ export default async function handler(
       .from('detail_reports')
       .select('*');
 
-    // Increase limit to handle all nhân sự
     const limit = recalculateAll === 'true' ? 50000 : 10000;
 
     if (recordId) {
@@ -69,14 +215,12 @@ export default async function handler(
         });
       }
       // Don't filter by date at database level - filter in memory instead
-      // This avoids column name issues
       detailReportsQuery = detailReportsQuery.limit(limit);
     } else if (recalculateAll === 'true') {
-      // Recalculate all records (no limit or very high limit)
+      // Recalculate all records
       detailReportsQuery = detailReportsQuery.limit(50000);
     } else {
-      // Default: calculate for ALL records (not just those without order_count)
-      // This ensures all nhân sự are calculated
+      // Default: calculate for ALL records
       detailReportsQuery = detailReportsQuery.limit(limit);
     }
 
@@ -158,20 +302,20 @@ export default async function handler(
     const allOrders = await fetchAllOrders(supabase, 10000, dateFilter);
     console.log(`Fetched ${allOrders.length} orders`);
 
-    // Calculate order_count for each filtered detail report
+    // Calculate cancel count for each filtered detail report
     const updatedRecords: any[] = [];
     let errors = 0;
 
     for (const detailReport of filteredDetailReports) {
       try {
-        // Calculate all statistics
-        const stats = calculateDetailReportStatistics(allOrders, detailReport);
+        // Calculate cancel count (only orders with check_result = "Hủy")
+        const cancelCount = calculateCancelCount(allOrders, detailReport);
 
-        // Update with fallback payloads so missing columns do not break the entire job.
-        const updateResult = await updateDetailReportStatistics(
+        // Update cancel count
+        const updateResult = await updateCancelCount(
           supabase,
           detailReport.id,
-          stats
+          cancelCount
         );
 
         if (!updateResult.ok) {
@@ -185,20 +329,8 @@ export default async function handler(
             ca: detailReport.ca || detailReport.shift || detailReport.camkt || '',
             Sản_phẩm: detailReport.Sản_phẩm || detailReport.san_pham || detailReport.product || detailReport.productmkt || '',
             Thị_trường: detailReport.Thị_trường || detailReport.thi_truong || detailReport.market || detailReport.marketmkt || '',
-            "Số đơn thực tế": stats.order_count,
-            "Doanh thu chốt thực tế": stats.revenue_actual,
-            "Doanh số hoàn hủy thực tế": stats.revenue_cancel_actual,
-            "Số đơn hoàn hủy thực tế": stats.order_cancel_count_actual,
-            "Doanh số sau hoàn hủy thực tế": stats.revenue_after_cancel_actual,
-            "Doanh số đi thực tế": stats.revenue_shipped_actual,
-            // Keep English names for backward compatibility
-            order_count: stats.order_count,
-            order_cancel_count_actual: stats.order_cancel_count_actual,
-            revenue_actual: stats.revenue_actual,
-            revenue_cancel_actual: stats.revenue_cancel_actual,
-            order_success_count: stats.order_success_count,
-            revenue_after_cancel_actual: stats.revenue_after_cancel_actual,
-            revenue_shipped_actual: stats.revenue_shipped_actual,
+            "Số đơn hoàn hủy thực tế": cancelCount,
+            order_cancel_count_actual: cancelCount,
             updated_fields: updateResult.usedFields,
           });
         }
@@ -210,14 +342,14 @@ export default async function handler(
 
     return res.status(200).json({
       success: true,
-      message: `Successfully calculated order_count for ${updatedRecords.length} detail reports${nameFilter ? ` (filtered by name: ${nameFilter})` : ''}`,
+      message: `Successfully calculated cancel count for ${updatedRecords.length} detail reports${nameFilter ? ` (filtered by name: ${nameFilter})` : ''}`,
       updated: updatedRecords.length,
       errors: errors,
       total: filteredDetailReports.length,
       data: updatedRecords,
     });
   } catch (error: any) {
-    console.error('Error in calculate-detail-report-count:', error);
+    console.error('Error in calculate-cancel-count:', error);
     return res.status(500).json({
       success: false,
       message: error.message || 'Internal server error',
