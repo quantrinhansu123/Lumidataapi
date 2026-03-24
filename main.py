@@ -179,8 +179,11 @@ RESPONSE_LABELS = {
 # Mapping từ parameter name sang column name trong DB
 # Lưu ý: team parameter map tới cột 'team' trong DB (không phải 'shift')
 # Nếu muốn filter theo shift, dùng parameter 'shift' trực tiếp
+# chi_nhanh: alias FE (chi nhánh) — lọc theo cột team trong bảng orders
 PARAM_TO_COLUMN_MAPPING = {
-    # Không cần mapping vì team và shift đều có cột tương ứng trong DB
+    "chi_nhanh": "team",
+    "chinhanh": "team",
+    "chi_nhánh": "team",
 }
 
 # Các cột của bảng detail_reports
@@ -290,15 +293,25 @@ SALES_REPORTS_RESPONSE_LABELS = {
     "revenue_actual": "revenue_actual",
     "revenue_cancel_actual": "revenue_cancel_actual",
     "order_success_count": "order_success_count",
+    # Chi nhánh (đồng bộ với users: branch / chi_nhanh / "chi nhánh")
+    "branch": "chi_nhanh",
+    "chi_nhanh": "chi_nhanh",
+    "chi_nhánh": "chi_nhanh",
+    "Chi nhánh": "chi_nhanh",
+    "chi nhánh": "chi_nhanh",
 }
 
 SALES_REPORTS_CANONICAL_COLUMNS = {
-    "ten", "date", "ca", "san_pham", "thi_truong", "team"
+    "ten", "date", "ca", "san_pham", "thi_truong", "team", "chi_nhanh"
 }
 
 SALES_REPORTS_PARAM_MAPPING = {
     "teamsale": "team",
     "teammkt": "team",
+    "branch": "chi_nhanh",
+    "chinhanh": "chi_nhanh",
+    "chi_nhanh": "chi_nhanh",
+    "chi_nhánh": "chi_nhanh",
     "nhan_su": "ten",
     "nhansu": "ten",
     "marketing_staff": "ten",
@@ -866,8 +879,8 @@ async def fetch_filtered_orders(
     non_text_params = {}
     for param_name, val in params.items():
         col = PARAM_TO_COLUMN_MAPPING.get(param_name, param_name)
-        # Chỉ filter case-insensitive cho team và shift
-        if param_name in ["team", "shift"]:
+        # Chỉ filter case-insensitive cho team và shift (gồm alias chi_nhanh -> team)
+        if col in ["team", "shift"]:
             if isinstance(val, str) and "," in val:
                 text_filters[col] = [v.strip().lower() for v in val.split(",") if v.strip()]
             elif val:
@@ -1038,7 +1051,8 @@ async def get_orders(
     Nếu truyền limit thì sẽ giới hạn số lượng.
     
     Bộ lọc hỗ trợ:
-    - team: Lọc theo ca làm việc (cột shift trong DB)
+    - team: Lọc theo team (cột team trong DB)
+    - chi_nhanh / chinhanh: Cùng ý nghĩa với team (lọc theo cột team), tiện cho FE đặt tên chi nhánh
     - delivery_staff: Lọc theo nhân viên giao hàng (hỗ trợ nhiều giá trị: delivery_staff=Name1,Name2)
     - delivery_status: Lọc theo trạng thái giao hàng (hỗ trợ nhiều giá trị)
     - payment_status: Lọc theo trạng thái thanh toán (hỗ trợ nhiều giá trị)
@@ -1283,6 +1297,7 @@ async def get_sales_reports(
     - sản phẩm: san_pham/product/productsale/productmkt/sanpham
     - thị trường: thi_truong/market/marketsale/marketmkt/thitruong
     - ngày: date/ngay/report_date
+    - chi nhánh: chi_nhanh/branch/chinhanh (nhiều giá trị cách nhau bởi dấu phẩy)
     """
     params = dict(request.query_params)
     params.pop("limit", None)
@@ -1518,7 +1533,7 @@ def root():
         "docs": "/docs",
         "orders": "GET /orders?created_at=22/12/2026&city=Carson",
         "detail_reports": "GET /detail_reports?nhan_su=Nguyễn Văn A,Trần Thị B&ngay=01/02/2026",
-        "sales_reports": "GET /sales_reports?teamsale=Team%20A&from_date=01/02/2026&to_date=10/02/2026&date_column=date",
+        "sales_reports": "GET /sales_reports?teamsale=Team%20A&branch=HN-MKT&from_date=01/02/2026&to_date=10/02/2026&date_column=date",
         "employees": "GET /employees?team=HN-MKT&name=Nguyễn&position=Marketing"
     }
 
