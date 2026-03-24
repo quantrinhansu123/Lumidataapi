@@ -220,12 +220,16 @@ DETAIL_REPORTS_RESPONSE_LABELS = {
     "Tên": "ten",
     "Ngày": "ngay",
     "Sản_phẩm": "san_pham",
-    "Thị_trường": "thi_truong"
+    "Thị_trường": "thi_truong",
+    # Doanh số TT (thực tế / target — tên cột trên sheet hoặc Supabase)
+    "Doanh số TT": "doanh_so_tt",
+    "doanh_so_tt": "doanh_so_tt",
 }
 
 DETAIL_REPORTS_CANONICAL_COLUMNS = {
     "ten", "ngay", "ca", "san_pham", "thi_truong", "team", "check_result",
-    "so_don_hoan_huy", "order_cancel_count_actual", "Số đơn hoàn hủy thực tế"
+    "so_don_hoan_huy", "order_cancel_count_actual", "Số đơn hoàn hủy thực tế",
+    "doanh_so_tt",
 }
 
 DETAIL_REPORTS_PARAM_MAPPING = {
@@ -252,6 +256,8 @@ DETAIL_REPORTS_PARAM_MAPPING = {
     "order_cancel_count_actual": "order_cancel_count_actual",
     "Số đơn hoàn hủy thực tế": "Số đơn hoàn hủy thực tế",
     "so_don_hoan_huy_thuc_te": "Số đơn hoàn hủy thực tế",
+    "doanh_so_tt": "doanh_so_tt",
+    "doanhso_tt": "doanh_so_tt",
 }
 
 # Cấu hình cho bảng sales_reports (tương tự detail_reports)
@@ -452,6 +458,7 @@ def apply_detail_reports_filters_in_memory(
         "doanh_so_hoan_huy_thuc_te", "revenue_cancel_actual", "Doanh số hoàn hủy thực tế",
         "doanh_so_sau_hoan_huy_thuc_te", "revenue_after_cancel_actual", "Doanh số sau hoàn hủy thực tế",
         "doanh_so_di_thuc_te", "revenue_shipped_actual", "Doanh số đi thực tế",
+        "doanh_so_tt", "Doanh số TT",
     }
     
     for col, val in normalized_filters.items():
