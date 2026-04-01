@@ -859,10 +859,11 @@ async def fetch_filtered_orders(
     from_date: Optional[str] = None,
     to_date: Optional[str] = None,
     date_column: str = "order_date",
+    table_name: str = "orders",
 ) -> List[dict]:
     """Helper function để lấy dữ liệu orders đã lọc (tái sử dụng logic từ get_orders)."""
     supabase = get_supabase()
-    q = supabase.table("orders").select(SELECT_COLUMNS)
+    q = supabase.table(table_name).select(SELECT_COLUMNS)
 
     params = dict(request.query_params)
     params.pop("limit", None)
@@ -938,7 +939,7 @@ async def fetch_filtered_orders(
         max_iterations = 10000
         
         for iteration in range(max_iterations):
-            q_batch = supabase.table("orders").select(SELECT_COLUMNS)
+            q_batch = supabase.table(table_name).select(SELECT_COLUMNS)
             
             # Áp dụng lại tất cả filters
             if from_date or to_date:
@@ -1077,6 +1078,7 @@ async def get_orders(
             from_date=from_date,
             to_date=to_date,
             date_column=date_column,
+            table_name="orders",
         )
         
         # Unpack result (data, has_more)
@@ -1140,6 +1142,7 @@ async def export_orders(
             from_date=from_date,
             to_date=to_date,
             date_column=date_column,
+            table_name="orders",
         )
         
         # Unpack result (data, has_more) - với limit=None, has_more sẽ là False
@@ -1196,6 +1199,58 @@ async def export_orders(
     except Exception as e:
         return JSONResponse(
             content={"error": str(e)},
+            status_code=500,
+        )
+
+
+@app.get("/order_hcm")
+async def get_orders_hcm(
+    request: Request,
+    limit: Optional[int] = Query(None, ge=1, le=10000, description="Số bản ghi tối đa (không truyền = lấy tất cả, tối đa 10000)"),
+    offset: int = Query(0, ge=0, description="Vị trí bắt đầu"),
+    after_id: Optional[str] = Query(None, description="Cursor: id bản ghi cuối trang trước (trang sau = after_id này)"),
+    from_date: Optional[str] = Query(None, description="Ngày bắt đầu (dd/mm/yyyy)"),
+    to_date: Optional[str] = Query(None, description="Ngày kết thúc (dd/mm/yyyy)"),
+    date_column: str = Query("order_date", description="Cột date để filter (order_date, created_at, ...)"),
+) -> Any:
+    """
+    Lấy danh sách order_hcm từ bảng order_code_hcm với bộ lọc giống endpoint /orders.
+    """
+    try:
+        result = await fetch_filtered_orders(
+            request=request,
+            limit=limit,
+            offset=offset,
+            after_id=after_id,
+            from_date=from_date,
+            to_date=to_date,
+            date_column=date_column,
+            table_name="order_code_hcm",
+        )
+
+        if isinstance(result, tuple):
+            data, has_more = result
+        else:
+            data = result
+            has_more = False
+
+        last_id = data[-1]["id"] if data else None
+        next_after_id = None
+        if limit and data and (has_more or len(data) >= limit):
+            next_after_id = last_id
+
+        return JSONResponse(
+            content={
+                "data": data,
+                "count": len(data),
+                "next_after_id": next_after_id,
+                "has_more": has_more if limit else None
+            },
+            status_code=200,
+        )
+    except Exception as e:
+        return JSONResponse(
+            content={"error": str(e), "data": []},
             status_code=500,
         )
 
@@ -1532,6 +1587,7 @@ def root():
         "message": "Orders API",
         "docs": "/docs",
         "orders": "GET /orders?created_at=22/12/2026&city=Carson",
+        "order_hcm": "GET /order_hcm?created_at=22/12/2026&city=Carson",
         "detail_reports": "GET /detail_reports?nhan_su=Nguyễn Văn A,Trần Thị B&ngay=01/02/2026",
         "sales_reports": "GET /sales_reports?teamsale=Team%20A&branch=HN-MKT&from_date=01/02/2026&to_date=10/02/2026&date_column=date",
         "employees": "GET /employees?team=HN-MKT&name=Nguyễn&position=Marketing"
